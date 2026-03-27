@@ -137,6 +137,11 @@ cu126 = [
     "torchvision",
 ]
 
+websearch = [
+    "tavily-python>=0.3.0",
+    "ddgs>=6.0",
+]
+
 dev = ["pytest>=8.3.4", "ruff>=0.4.0", "pyright"]
 
 [tool.uv]
