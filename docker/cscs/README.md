@@ -9,6 +9,12 @@ CSCS Alps uses ARM64 (`linux/arm64`). If building from a non-ARM host, pass `--p
 ```bash
 sudo docker build -f docker/cscs/Dockerfile --platform linux/arm64 -t mmore:cscs .
 ```
+
+Custom extras (overrides the default `--extra all`):
+
+```bash
+sudo docker build -f docker/cscs/Dockerfile --platform linux/arm64 --build-arg UV_OVERRIDE="--extra all" -t mmore:cscs .
+```
  
 ## Push to a registry
 
