@@ -1,4 +1,4 @@
-from .base import AgentState, BaseAgent
+from .base import AgentState, BaseAgent, clear_llm_cache
 from .checkpointer import build_checkpointer
 from .config import AgentConfig
 from .registry import (
@@ -15,6 +15,7 @@ __all__ = [
     "BaseAgent",
     "ToolNotRegisteredError",
     "build_checkpointer",
+    "clear_llm_cache",
     "list_tools",
     "register_tool",
     "resolve_tools",

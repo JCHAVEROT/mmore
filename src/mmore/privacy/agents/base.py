@@ -4,7 +4,17 @@ calling the LLM.
 """
 
 from dataclasses import replace
-from typing import Annotated, Any, Dict, List, Optional, TypedDict, Union
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    TypedDict,
+    Union,
+)
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -13,11 +23,50 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import Self
 
-from ...rag.llm import LLM
+from ...rag.llm import LLM, LLMConfig
 from ...utils import load_config
 from .checkpointer import build_checkpointer
 from .config import AgentConfig
 from .registry import resolve_tools
+
+
+class _LLMCacheKey(NamedTuple):
+    llm_name: str
+    base_url: str | None
+    provider: str | None
+    max_new_tokens: int | None
+    temperature: float
+
+
+_llm_cache: Dict[_LLMCacheKey, BaseChatModel] = {}
+
+
+def _llm_cache_key(cfg: LLMConfig) -> _LLMCacheKey:
+    return _LLMCacheKey(
+        llm_name=cfg.llm_name,
+        base_url=cfg.base_url,
+        provider=cfg.provider,
+        max_new_tokens=cfg.max_new_tokens,
+        temperature=cfg.temperature,
+    )
+
+
+def _get_or_load_llm(cfg: LLMConfig) -> BaseChatModel:
+    key = _llm_cache_key(cfg)
+    if key not in _llm_cache:
+        _llm_cache[key] = LLM.from_config(cfg)
+    return _llm_cache[key]
+
+
+def _drop_llm(cfg: LLMConfig) -> bool:
+    """Drop the cached LLM for ``cfg`` from the cache."""
+    key = _llm_cache_key(cfg)
+    return _llm_cache.pop(key, None) is not None
+
+
+def clear_llm_cache() -> None:
+    """Drop all cached LLM instances."""
+    _llm_cache.clear()
 
 
 class AgentState(TypedDict):
@@ -32,13 +81,29 @@ class BaseAgent:
     def __init__(
         self,
         config: AgentConfig,
-        llm: BaseChatModel,
+        llm_config: LLMConfig,
+        tools: Optional[List[Callable]] = None,
         checkpointer: Optional[BaseCheckpointSaver] = None,
     ):
         self.config = config
-        self.llm = llm
+        self._llm_config = llm_config
+        self._tools: List[Callable] = list(tools) if tools else []
+        self._llm: Optional[BaseChatModel] = None
         self.checkpointer = checkpointer
         self.graph = self._build_graph()
+
+    @property
+    def llm(self) -> BaseChatModel:
+        """Lazy-load and cache the LLM on first access."""
+        if self._llm is None:
+            base = _get_or_load_llm(self._llm_config)
+            self._llm = base.bind_tools(self._tools) if self._tools else base
+        return self._llm
+
+    def release(self) -> None:
+        """Drop this agent's LLM from the cache and the local reference."""
+        _drop_llm(self._llm_config)
+        self._llm = None
 
     @classmethod
     def from_config(
@@ -53,13 +118,9 @@ class BaseAgent:
             checkpointer = build_checkpointer(config)
 
         llm_config = replace(config.llm, temperature=config.resolve_temperature())
-        llm = LLM.from_config(llm_config)
+        tools = resolve_tools(config.tools) if config.tools else []
 
-        if config.tools:
-            tools = resolve_tools(config.tools)
-            llm = llm.bind_tools(tools)
-
-        return cls(config, llm, checkpointer)
+        return cls(config, llm_config, tools, checkpointer)
 
     def _build_graph(self):
         graph = StateGraph(AgentState)
