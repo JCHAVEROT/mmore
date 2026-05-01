@@ -15,6 +15,7 @@ from typing_extensions import Self
 
 from ...rag.llm import LLM
 from ...utils import load_config
+from .checkpointer import build_checkpointer
 from .config import AgentConfig
 from .registry import resolve_tools
 
@@ -47,6 +48,9 @@ class BaseAgent:
     ) -> Self:
         if not isinstance(config, AgentConfig):
             config = load_config(config, AgentConfig)
+
+        if checkpointer is None and config.checkpointer is not None:
+            checkpointer = build_checkpointer(config)
 
         llm_config = replace(config.llm, temperature=config.resolve_temperature())
         llm = LLM.from_config(llm_config)
