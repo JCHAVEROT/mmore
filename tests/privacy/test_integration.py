@@ -1,0 +1,163 @@
+"""Integration tests for mmore.privacy.agents."""
+
+from unittest.mock import patch
+
+import pytest
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from mmore.privacy.agents.base import BaseAgent
+from mmore.privacy.agents.config import AgentConfig
+from mmore.privacy.agents.registry import ToolNotRegisteredError, register_tool
+from mmore.rag.llm import LLMConfig
+from mmore.utils import load_config
+
+
+def _cfg(**overrides) -> AgentConfig:
+    base = dict(
+        llm=LLMConfig(llm_name="gpt2", max_new_tokens=8, temperature=0.5),
+        name="answerer",
+        system_prompt="You are helpful.",
+    )
+    base.update(overrides)
+    return AgentConfig(**base)
+
+
+def test_system_prompt_is_prepended_to_messages():
+    captured = {}
+
+    class Capturing(FakeListChatModel):
+        def _call(self, messages, stop=None, run_manager=None, **kwargs):
+            captured["messages"] = messages
+            return super()._call(messages, stop, run_manager, **kwargs)
+
+    fake = Capturing(responses=["ok"])
+    with patch("mmore.privacy.agents.base.LLM.from_config", return_value=fake):
+        agent = BaseAgent.from_config(_cfg(system_prompt="SYS"))
+        agent.invoke("hello")
+
+    sent = captured["messages"]
+    assert isinstance(sent[0], SystemMessage) and sent[0].content == "SYS"
+    assert isinstance(sent[1], HumanMessage) and sent[1].content == "hello"
+
+
+def test_registered_tools_are_bound_to_llm_at_first_invoke(isolated_tool_registry):
+    bound_with = {}
+
+    class Binding(FakeListChatModel):
+        def bind_tools(self, tools, **_kwargs):
+            bound_with["tools"] = list(tools)
+            return self
+
+    @register_tool("greet")
+    def greet(name: str) -> str:
+        return f"hi {name}"
+
+    fake = Binding(responses=["ok"])
+    with patch("mmore.privacy.agents.base.LLM.from_config", return_value=fake):
+        agent = BaseAgent.from_config(_cfg(tools=["greet"]))
+        agent.invoke("trigger")
+
+    assert bound_with["tools"] == [greet]
+
+
+def test_unknown_tool_in_config_raises_at_from_config(isolated_tool_registry):
+    with pytest.raises(ToolNotRegisteredError):
+        BaseAgent.from_config(_cfg(tools=["does_not_exist"]))
+
+
+def test_temperature_override_on_agent_config_wins_over_llm():
+    captured = {}
+
+    def factory(llm_cfg):
+        captured["llm_cfg"] = llm_cfg
+        return FakeListChatModel(responses=["ok"])
+
+    with patch("mmore.privacy.agents.base.LLM.from_config", side_effect=factory):
+        agent = BaseAgent.from_config(_cfg(temperature=0.0))
+        agent.invoke("trigger")
+
+    assert captured["llm_cfg"].temperature == 0.0
+
+
+def test_agent_config_loads_from_dict_via_dacite():
+    raw = {
+        "llm": {"llm_name": "gpt2", "max_new_tokens": 32},
+        "name": "sanitizer",
+        "system_prompt": "Strip PII.",
+        "tools": [],
+        "temperature": 0.0,
+        "checkpointer": "memory",
+    }
+
+    cfg = load_config(raw, AgentConfig)
+
+    assert isinstance(cfg, AgentConfig) and isinstance(cfg.llm, LLMConfig)
+    assert cfg.name == "sanitizer"
+    assert cfg.checkpointer == "memory"
+    assert cfg.resolve_temperature() == 0.0
+
+
+def test_memory_checkpointer_persists_state_in_a_thread():
+    fake = FakeListChatModel(responses=["first", "second"])
+    cfg = _cfg(checkpointer="memory")
+    thread = {"configurable": {"thread_id": "t-1"}}
+
+    with patch("mmore.privacy.agents.base.LLM.from_config", return_value=fake):
+        agent = BaseAgent.from_config(cfg)
+        agent.invoke("q1", config=thread)
+        agent.invoke("q2", config=thread)
+
+    snapshot = agent.graph.get_state(thread)
+    assert [m.content for m in snapshot.values["messages"]] == [
+        "q1",
+        "first",
+        "q2",
+        "second",
+    ]
+
+
+def test_sqlite_checkpointer_persists_state_across_agents(tmp_path):
+    db = tmp_path / "check.db"
+    fake = FakeListChatModel(responses=["a"])
+    cfg = _cfg(checkpointer="sqlite", checkpoint_path=str(db))
+    thread = {"configurable": {"thread_id": "t-rt"}}
+
+    with patch("mmore.privacy.agents.base.LLM.from_config", return_value=fake):
+        agent_a = BaseAgent.from_config(cfg)
+        agent_a.invoke("hello", config=thread)
+        agent_a.checkpointer.conn.close()
+
+        agent_b = BaseAgent.from_config(cfg)
+        snapshot = agent_b.graph.get_state(thread)
+        agent_b.checkpointer.conn.close()
+
+    assert [m.content for m in snapshot.values["messages"]] == ["hello", "a"]
+
+
+def test_lazy_loading_and_dedup_minimize_load_calls():
+    fake = FakeListChatModel(responses=["x"] * 10)
+    with patch("mmore.privacy.agents.base.LLM.from_config", return_value=fake) as mock:
+        agent_x = BaseAgent.from_config(_cfg(name="x"))
+        agent_y = BaseAgent.from_config(_cfg(name="y"))
+        assert mock.call_count == 0
+
+        agent_x.invoke("q")
+        agent_y.invoke("q")
+        assert mock.call_count == 1
+
+
+def test_release_drops_local_ref_and_evicts_cache_entry():
+    fake = FakeListChatModel(responses=["x"] * 10)
+    with patch("mmore.privacy.agents.base.LLM.from_config", return_value=fake) as mock:
+        agent = BaseAgent.from_config(_cfg())
+        agent.invoke("q")
+        assert mock.call_count == 1
+        assert agent._llm is not None
+
+        agent.release()
+        assert agent._llm is None
+
+        new_agent = BaseAgent.from_config(_cfg())
+        new_agent.invoke("q")
+        assert mock.call_count == 2

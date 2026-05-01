@@ -59,7 +59,6 @@ def _get_or_load_llm(cfg: LLMConfig) -> BaseChatModel:
 
 
 def _drop_llm(cfg: LLMConfig) -> bool:
-    """Drop the cached LLM for ``cfg`` from the cache."""
     key = _llm_cache_key(cfg)
     return _llm_cache.pop(key, None) is not None
 
