@@ -124,10 +124,16 @@ api = [
     "motor>=3.5",
 ]
 
+privacy = [
+    "mmore[rag]",
+    "langgraph>=1.0",
+    "langgraph-checkpoint-sqlite>=2.0",
+]
+
 # --- Composite + variant extras ---
 
 all = [
-    "mmore[process,rag,api,websearch]",
+    "mmore[process,rag,api,websearch,privacy]",
 ]
 
 cpu = [
