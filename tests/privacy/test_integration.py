@@ -124,13 +124,11 @@ def test_sqlite_checkpointer_persists_state_across_agents(tmp_path):
     thread = {"configurable": {"thread_id": "t-rt"}}
 
     with patch("mmore.privacy.agents.base.LLM.from_config", return_value=fake):
-        agent_a = BaseAgent.from_config(cfg)
-        agent_a.invoke("hello", config=thread)
-        agent_a.checkpointer.conn.close()
+        with BaseAgent.from_config(cfg) as agent_a:
+            agent_a.invoke("hello", config=thread)
 
-        agent_b = BaseAgent.from_config(cfg)
-        snapshot = agent_b.graph.get_state(thread)
-        agent_b.checkpointer.conn.close()
+        with BaseAgent.from_config(cfg) as agent_b:
+            snapshot = agent_b.graph.get_state(thread)
 
     assert [m.content for m in snapshot.values["messages"]] == ["hello", "a"]
 

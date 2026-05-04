@@ -112,6 +112,20 @@ class BaseAgent:
         _drop_llm(self._llm_config)
         self._llm = None
 
+    def close(self) -> None:
+        """Release LLM and close checkpointer resources."""
+        if self.checkpointer is not None:
+            conn = getattr(self.checkpointer, "conn", None)
+            if conn is not None:
+                conn.close()
+        self.release()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.close()
+
     @classmethod
     def from_config(
         cls,
