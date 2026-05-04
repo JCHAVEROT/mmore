@@ -3,6 +3,7 @@ It resolves registered tools and prepends a global agent system prompt before
 calling the LLM.
 """
 
+import threading
 from dataclasses import replace
 from typing import (
     Annotated,
@@ -39,6 +40,7 @@ class _LLMCacheKey(NamedTuple):
 
 
 _llm_cache: Dict[_LLMCacheKey, BaseChatModel] = {}
+_llm_cache_lock = threading.Lock()
 
 
 def _llm_cache_key(cfg: LLMConfig) -> _LLMCacheKey:
@@ -53,19 +55,25 @@ def _llm_cache_key(cfg: LLMConfig) -> _LLMCacheKey:
 
 def _get_or_load_llm(cfg: LLMConfig) -> BaseChatModel:
     key = _llm_cache_key(cfg)
-    if key not in _llm_cache:
-        _llm_cache[key] = LLM.from_config(cfg)
-    return _llm_cache[key]
+    cached = _llm_cache.get(key)
+    if cached is not None:
+        return cached
+    with _llm_cache_lock:
+        cached = _llm_cache.get(key)
+        if cached is None:
+            cached = LLM.from_config(cfg)
+            _llm_cache[key] = cached
+        return cached
 
 
 def _drop_llm(cfg: LLMConfig) -> bool:
-    key = _llm_cache_key(cfg)
-    return _llm_cache.pop(key, None) is not None
+    with _llm_cache_lock:
+        return _llm_cache.pop(_llm_cache_key(cfg), None) is not None
 
 
 def clear_llm_cache() -> None:
-    """Drop all cached LLM instances."""
-    _llm_cache.clear()
+    with _llm_cache_lock:
+        _llm_cache.clear()
 
 
 class AgentState(TypedDict):
