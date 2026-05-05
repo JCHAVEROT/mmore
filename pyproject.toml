@@ -132,6 +132,7 @@ privacy = [
     "presidio-analyzer",
     "presidio-anonymizer",
     "spacy",
+    "dspy>=2.6",
 ]
 
 privacy-openai-filter = [
