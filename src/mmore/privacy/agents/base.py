@@ -99,33 +99,6 @@ class BaseAgent:
         self.checkpointer = checkpointer
         self.graph = self._build_graph()
 
-    @property
-    def llm(self) -> BaseChatModel:
-        """Lazy-load and cache the LLM on first access."""
-        if self._llm is None:
-            base = _get_or_load_llm(self._llm_config)
-            self._llm = base.bind_tools(self._tools) if self._tools else base
-        return self._llm
-
-    def release(self) -> None:
-        """Drop this agent's LLM from the cache and the local reference."""
-        _drop_llm(self._llm_config)
-        self._llm = None
-
-    def close(self) -> None:
-        """Release LLM and close checkpointer resources."""
-        if self.checkpointer is not None:
-            conn = getattr(self.checkpointer, "conn", None)
-            if conn is not None:
-                conn.close()
-        self.release()
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(self, *args) -> None:
-        self.close()
-
     @classmethod
     def from_config(
         cls,
@@ -142,6 +115,29 @@ class BaseAgent:
         tools = resolve_tools(config.tools) if config.tools else []
 
         return cls(config, llm_config, tools, checkpointer)
+
+    @property
+    def llm(self) -> BaseChatModel:
+        """Lazy-load and cache the LLM on first access."""
+        if self._llm is None:
+            base = _get_or_load_llm(self._llm_config)
+            self._llm = base.bind_tools(self._tools) if self._tools else base
+        return self._llm
+
+    def release(self) -> None:
+        """Release LLM and close checkpointer resources."""
+        if self.checkpointer is not None:
+            conn = getattr(self.checkpointer, "conn", None)
+            if conn is not None:
+                conn.close()
+        _drop_llm(self._llm_config)
+        self._llm = None
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.release()
 
     def _build_graph(self):
         graph = StateGraph(AgentState)
@@ -162,6 +158,15 @@ class BaseAgent:
         query: Union[str, Dict[str, Any]],
         config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        """Run the agent graph on the given query.
+
+        Args:
+            query: A user message string or a pre-built state dict.
+            config: Optional LangGraph runtime config.
+
+        Returns:
+            The final graph state dict.
+        """
         if isinstance(query, str):
             input_state: Dict[str, Any] = {"messages": [HumanMessage(content=query)]}
         else:

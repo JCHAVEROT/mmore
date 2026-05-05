@@ -1,4 +1,4 @@
-"""Pluggable checkpointer factory using LangGraph.
+"""Checkpoint builder using LangGraph.
 
 ``MemorySaver`` is intended for tests and ephemeral runs, and
 ``SqliteSaver`` for persistence across processes.
@@ -14,11 +14,14 @@ from .config import AgentConfig
 
 
 def build_checkpointer(config: AgentConfig) -> BaseCheckpointSaver | None:
-    """Build a checkpointer from an agent config, or return ``None`` if unset.
+    """Build a checkpointer from an agent config.
 
-    Supported types:
-      * ``"memory"`` -> ``MemorySaver`` (lost on shutdown).
-      * ``"sqlite"`` -> ``SqliteSaver`` using ``config.checkpoint_path``.
+    Args:
+        config: Agent config specifying the checkpointer type and path.
+
+    Returns:
+        A ``MemorySaver`` for ``"memory"``, a ``SqliteSaver`` for ``"sqlite"``,
+        or ``None`` if no checkpointer is configured.
     """
     checkpointer = config.checkpointer
     if checkpointer is None:
