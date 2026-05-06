@@ -66,11 +66,6 @@ def _get_or_load_llm(cfg: LLMConfig) -> BaseChatModel:
         return cached
 
 
-def _drop_llm(cfg: LLMConfig) -> bool:
-    with _llm_cache_lock:
-        return _llm_cache.pop(_llm_cache_key(cfg), None) is not None
-
-
 def clear_llm_cache() -> None:
     with _llm_cache_lock:
         _llm_cache.clear()
@@ -135,7 +130,6 @@ class BaseAgent:
             conn = getattr(self.checkpointer, "conn", None)
             if conn is not None:
                 conn.close()
-        _drop_llm(self._llm_config)
         self._llm = None
 
     def __enter__(self) -> Self:
