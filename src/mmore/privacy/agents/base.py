@@ -117,8 +117,7 @@ class BaseAgent:
     def llm(self) -> BaseChatModel:
         """Lazy-load and cache the LLM on first access."""
         if self._llm is None:
-            base = _get_or_load_llm(self._llm_config)
-            self._llm = base.bind_tools(self._tools) if self._tools else base
+            self._llm = _get_or_load_llm(self._llm_config)
         return self._llm
 
     def release(self) -> None:
@@ -146,7 +145,8 @@ class BaseAgent:
         messages: List[BaseMessage] = list(state["messages"])
         if self.config.system_prompt:
             messages = [SystemMessage(content=self.config.system_prompt), *messages]
-        response = self.llm.invoke(messages)
+        llm = self.llm.bind_tools(self._tools) if self._tools else self.llm
+        response = llm.invoke(messages)
         return {"messages": [response]}
 
     def invoke(

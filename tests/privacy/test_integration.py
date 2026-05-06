@@ -145,7 +145,7 @@ def test_lazy_loading_and_dedup_minimize_load_calls():
         assert mock.call_count == 1
 
 
-def test_release_drops_local_ref_and_evicts_cache_entry():
+def test_clear_llm_cache():
     fake = FakeListChatModel(responses=["x"] * 10)
     with patch("mmore.privacy.agents.base.LLM.from_config", return_value=fake) as mock:
         agent = BaseAgent.from_config(_cfg())
