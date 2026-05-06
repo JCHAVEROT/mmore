@@ -7,7 +7,6 @@
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
@@ -44,9 +43,7 @@ def build_checkpointer(config: AgentConfig) -> BaseCheckpointSaver | None:
 
 
 @contextmanager
-def open_checkpointer(
-    config: AgentConfig,
-) -> Generator[BaseCheckpointSaver | None, None, None]:
+def open_checkpointer(config: AgentConfig):
     """Build a checkpointer to share across multiple agents and close its
     connection on exit.
 
