@@ -48,7 +48,7 @@ def open_checkpointer(config: AgentConfig):
     connection on exit.
 
     Example:
-        >>> with open_checkpointer(graph_config) as cp:
+        >>> with open_checkpointer(config) as cp:
         ...     a = BaseAgent.from_config(cfg_a, checkpointer=cp)
         ...     b = BaseAgent.from_config(cfg_b, checkpointer=cp)
     """

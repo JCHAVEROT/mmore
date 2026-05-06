@@ -55,9 +55,6 @@ def _llm_cache_key(cfg: LLMConfig) -> _LLMCacheKey:
 
 def _get_or_load_llm(cfg: LLMConfig) -> BaseChatModel:
     key = _llm_cache_key(cfg)
-    cached = _llm_cache.get(key)
-    if cached is not None:
-        return cached
     with _llm_cache_lock:
         cached = _llm_cache.get(key)
         if cached is None:
