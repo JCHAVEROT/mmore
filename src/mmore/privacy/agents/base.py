@@ -19,6 +19,7 @@ from typing import (
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.runnables.config import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -151,8 +152,8 @@ class BaseAgent:
 
     def invoke(
         self,
-        query: Union[str, Dict[str, Any]],
-        config: Optional[Dict[str, Any]] = None,
+        query: Union[str, AgentState],
+        config: Optional[RunnableConfig] = None,
     ) -> Dict[str, Any]:
         """Run the agent graph on the given query.
 
@@ -164,7 +165,7 @@ class BaseAgent:
             The final graph state dict.
         """
         if isinstance(query, str):
-            input_state: Dict[str, Any] = {"messages": [HumanMessage(content=query)]}
+            input_state: AgentState = {"messages": [HumanMessage(content=query)]}
         else:
             input_state = query
         return self.graph.invoke(input_state, config=config)

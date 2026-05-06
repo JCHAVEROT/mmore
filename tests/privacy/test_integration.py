@@ -1,10 +1,12 @@
 """Integration tests for mmore.privacy.agents."""
 
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables.config import RunnableConfig
 
 from mmore.privacy.agents.base import BaseAgent, clear_llm_cache
 from mmore.privacy.agents.config import AgentConfig
@@ -13,13 +15,13 @@ from mmore.rag.llm import LLMConfig
 from mmore.utils import load_config
 
 
-def _cfg(**overrides) -> AgentConfig:
-    base = dict(
+def _cfg(**args: Any) -> AgentConfig:
+    base: dict[str, Any] = dict(
         llm=LLMConfig(llm_name="gpt2", max_new_tokens=8, temperature=0.5),
         name="answerer",
         system_prompt="You are helpful.",
     )
-    base.update(overrides)
+    base.update(args)
     return AgentConfig(**base)
 
 
@@ -101,7 +103,7 @@ def test_agent_config_loads_from_dict_via_dacite():
 def test_memory_checkpointer_persists_state_in_a_thread():
     fake = FakeListChatModel(responses=["first", "second"])
     cfg = _cfg(checkpointer="memory")
-    thread = {"configurable": {"thread_id": "t-1"}}
+    thread: RunnableConfig = {"configurable": {"thread_id": "t-1"}}
 
     with patch("mmore.privacy.agents.base.LLM.from_config", return_value=fake):
         agent = BaseAgent.from_config(cfg)
@@ -121,7 +123,7 @@ def test_sqlite_checkpointer_persists_state_across_agents(tmp_path):
     db = tmp_path / "check.db"
     fake = FakeListChatModel(responses=["a"])
     cfg = _cfg(checkpointer="sqlite", checkpoint_path=str(db))
-    thread = {"configurable": {"thread_id": "t-rt"}}
+    thread: RunnableConfig = {"configurable": {"thread_id": "t-rt"}}
 
     with patch("mmore.privacy.agents.base.LLM.from_config", return_value=fake):
         with BaseAgent.from_config(cfg) as agent_a:
