@@ -3765,30 +3765,25 @@ index = [
     { name = "sentence-transformers" },
     { name = "transformers" },
 ]
-privacy = [
-    { name = "accelerate" },
+llm = [
     { name = "cohere" },
-    { name = "datasets" },
     { name = "langchain" },
     { name = "langchain-anthropic" },
-    { name = "langchain-aws" },
     { name = "langchain-cohere" },
-    { name = "langchain-community" },
     { name = "langchain-huggingface" },
-    { name = "langchain-milvus" },
+    { name = "langchain-mistralai" },
+    { name = "langchain-openai" },
+]
+privacy = [
+    { name = "cohere" },
+    { name = "langchain" },
+    { name = "langchain-anthropic" },
+    { name = "langchain-cohere" },
+    { name = "langchain-huggingface" },
     { name = "langchain-mistralai" },
     { name = "langchain-openai" },
     { name = "langgraph" },
     { name = "langgraph-checkpoint-sqlite" },
-    { name = "milvus-model" },
-    { name = "nltk" },
-    { name = "pymilvus", extra = ["milvus-lite"] },
-    { name = "pymilvus-model" },
-    { name = "ragas" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-5-mmore-cpu' and extra == 'extra-5-mmore-cu126')" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-5-mmore-cpu' and extra == 'extra-5-mmore-cu126')" },
-    { name = "sentence-transformers" },
-    { name = "transformers" },
 ]
 process = [
     { name = "argostranslate" },
@@ -3862,7 +3857,7 @@ requires-dist = [
     { name = "chonkie", marker = "extra == 'process'", specifier = ">=0.2.1,<1" },
     { name = "clean-text", marker = "extra == 'process'" },
     { name = "click", specifier = ">=8.1.7" },
-    { name = "cohere", marker = "extra == 'rag'", specifier = ">=5.0" },
+    { name = "cohere", marker = "extra == 'llm'", specifier = ">=5.0" },
     { name = "colpali-engine", marker = "extra == 'process'", specifier = ">=0.3" },
     { name = "dacite", specifier = ">=1.8" },
     { name = "dask", extras = ["distributed"], marker = "extra == 'process'", specifier = ">=2025.2.0" },
@@ -3876,15 +3871,15 @@ requires-dist = [
     { name = "google-api-python-client", marker = "extra == 'process'", specifier = ">=2.120" },
     { name = "google-auth", marker = "extra == 'process'", specifier = ">=2.28" },
     { name = "httpx", marker = "extra == 'api'", specifier = ">=0.27" },
-    { name = "langchain", marker = "extra == 'rag'", specifier = ">=0.3" },
-    { name = "langchain-anthropic", marker = "extra == 'rag'", specifier = ">=0.3" },
+    { name = "langchain", marker = "extra == 'llm'", specifier = ">=0.3" },
+    { name = "langchain-anthropic", marker = "extra == 'llm'", specifier = ">=0.3" },
     { name = "langchain-aws", marker = "extra == 'rag'", specifier = ">=0.2" },
-    { name = "langchain-cohere", marker = "extra == 'rag'", specifier = ">=0.3" },
+    { name = "langchain-cohere", marker = "extra == 'llm'", specifier = ">=0.3" },
     { name = "langchain-community", marker = "extra == 'rag'", specifier = ">=0.3" },
-    { name = "langchain-huggingface", marker = "extra == 'rag'", specifier = ">=0.1" },
+    { name = "langchain-huggingface", marker = "extra == 'llm'", specifier = ">=0.1" },
     { name = "langchain-milvus", marker = "extra == 'index'", specifier = ">=0.1.8" },
-    { name = "langchain-mistralai", marker = "extra == 'rag'", specifier = ">=0.2" },
-    { name = "langchain-openai", marker = "extra == 'rag'", specifier = ">=0.3" },
+    { name = "langchain-mistralai", marker = "extra == 'llm'", specifier = ">=0.2" },
+    { name = "langchain-openai", marker = "extra == 'llm'", specifier = ">=0.3" },
     { name = "langdetect", marker = "extra == 'process'", specifier = ">=1.0.9" },
     { name = "langgraph", marker = "extra == 'privacy'", specifier = ">=1.0" },
     { name = "langgraph-checkpoint-sqlite", marker = "extra == 'privacy'", specifier = ">=2.0" },
@@ -3895,9 +3890,9 @@ requires-dist = [
     { name = "markdownify", marker = "extra == 'process'", specifier = ">=0.12" },
     { name = "marker-pdf", marker = "extra == 'process'", specifier = ">=1.6" },
     { name = "milvus-model", marker = "extra == 'index'", specifier = ">=0.2.12" },
-    { name = "mmore", extras = ["index"], marker = "extra == 'rag'" },
+    { name = "mmore", extras = ["index", "llm"], marker = "extra == 'rag'" },
+    { name = "mmore", extras = ["llm"], marker = "extra == 'privacy'" },
     { name = "mmore", extras = ["process", "rag", "api", "websearch", "privacy"], marker = "extra == 'all'" },
-    { name = "mmore", extras = ["rag"], marker = "extra == 'privacy'" },
     { name = "motor", marker = "extra == 'api'", specifier = ">=3.5" },
     { name = "moviepy", marker = "extra == 'process'", specifier = ">=2.0" },
     { name = "nltk", marker = "extra == 'rag'", specifier = ">=3.9" },
@@ -3947,7 +3942,7 @@ requires-dist = [
     { name = "validators", specifier = ">=0.28" },
     { name = "xlrd", marker = "extra == 'process'", specifier = ">=2.0.1" },
 ]
-provides-extras = ["process", "index", "rag", "api", "privacy", "all", "cpu", "cu126", "websearch", "dev"]
+provides-extras = ["process", "index", "llm", "rag", "api", "privacy", "all", "cpu", "cu126", "websearch", "dev"]
 
 [[package]]
 name = "motor"

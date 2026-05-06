@@ -95,9 +95,8 @@ index = [
     "scipy>=1.8",
 ]
 
-rag = [
-    # RAG with LangChain (LLM calls, evaluation)
-    "mmore[index]",
+llm = [
+    # LangChain LLM client packages
     "langchain>=0.3",
     "langchain-anthropic>=0.3",
     "langchain-aws>=0.2",
@@ -107,6 +106,11 @@ rag = [
     "langchain-mistralai>=0.2",
     "langchain-openai>=0.3",
     "cohere>=5.0",
+]
+
+rag = [
+    # RAG with LangChain (LLM calls, evaluation)
+    "mmore[index,llm]",
     "ragas>=0.2",
     "datasets>=4.0",
     "accelerate>=0.30",
@@ -125,7 +129,7 @@ api = [
 ]
 
 privacy = [
-    "mmore[rag]",
+    "mmore[llm]",
     "langgraph>=1.0",
     "langgraph-checkpoint-sqlite>=2.0",
 ]
