@@ -1,10 +1,13 @@
 """Checkpoint builder using LangGraph.
 
-``MemorySaver`` is intended for tests and ephemeral runs, and
+``MemorySaver`` is intended for tests and temporary runs, and
 ``SqliteSaver`` for persistence across processes.
 """
 
 import sqlite3
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Generator
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
@@ -31,8 +34,32 @@ def build_checkpointer(config: AgentConfig) -> BaseCheckpointSaver | None:
     if checkpointer == "sqlite":
         if not config.checkpoint_path:
             raise ValueError("'sqlite' checkpointer requires checkpoint_path to be set")
-        cx = sqlite3.connect(config.checkpoint_path, check_same_thread=False)
+        path = Path(config.checkpoint_path)
+        path.parent.mkdir(exist_ok=True, parents=True)
+        cx = sqlite3.connect(path, check_same_thread=False)
         return SqliteSaver(cx)
     raise ValueError(
         f"Unknown checkpointer type: '{checkpointer}' (expected 'memory' or 'sqlite')"
     )
+
+
+@contextmanager
+def open_checkpointer(
+    config: AgentConfig,
+) -> Generator[BaseCheckpointSaver | None, None, None]:
+    """Build a checkpointer to share across multiple agents and close its
+    connection on exit.
+
+    Example:
+        >>> with open_checkpointer(graph_config) as cp:
+        ...     a = BaseAgent.from_config(cfg_a, checkpointer=cp)
+        ...     b = BaseAgent.from_config(cfg_b, checkpointer=cp)
+    """
+    cp = build_checkpointer(config)
+    try:
+        yield cp
+    finally:
+        if cp is not None:
+            conn = getattr(cp, "conn", None)
+            if conn is not None:
+                conn.close()

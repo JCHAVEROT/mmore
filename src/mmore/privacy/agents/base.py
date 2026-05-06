@@ -1,6 +1,6 @@
 """Wrapper around LangGraph's StateGraph where each agent is a single node.
-It resolves registered tools and prepends a global agent system prompt before
-calling the LLM.
+It resolves registered tools and prepends the configured per-agent system
+prompt before calling the LLM.
 """
 
 import threading
@@ -97,6 +97,7 @@ class BaseAgent:
         self._tools: List[Callable] = list(tools) if tools else []
         self._llm: Optional[BaseChatModel] = None
         self.checkpointer = checkpointer
+        self._owns_checkpointer = False
         self.graph = self._build_graph()
 
     @classmethod
@@ -108,13 +109,17 @@ class BaseAgent:
         if not isinstance(config, AgentConfig):
             config = load_config(config, AgentConfig)
 
+        owns_checkpointer = False
         if checkpointer is None and config.checkpointer is not None:
             checkpointer = build_checkpointer(config)
+            owns_checkpointer = True
 
         llm_config = replace(config.llm, temperature=config.resolve_temperature())
         tools = resolve_tools(config.tools) if config.tools else []
 
-        return cls(config, llm_config, tools, checkpointer)
+        agent = cls(config, llm_config, tools, checkpointer)
+        agent._owns_checkpointer = owns_checkpointer
+        return agent
 
     @property
     def llm(self) -> BaseChatModel:
@@ -125,8 +130,8 @@ class BaseAgent:
         return self._llm
 
     def release(self) -> None:
-        """Release LLM and close checkpointer resources."""
-        if self.checkpointer is not None:
+        """Release LLM and close checkpointer resources if necessary."""
+        if self._owns_checkpointer and self.checkpointer is not None:
             conn = getattr(self.checkpointer, "conn", None)
             if conn is not None:
                 conn.close()
