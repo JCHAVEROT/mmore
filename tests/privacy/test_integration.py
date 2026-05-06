@@ -6,7 +6,7 @@ import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from mmore.privacy.agents.base import BaseAgent
+from mmore.privacy.agents.base import BaseAgent, clear_llm_cache
 from mmore.privacy.agents.config import AgentConfig
 from mmore.privacy.agents.registry import ToolNotRegisteredError, register_tool
 from mmore.rag.llm import LLMConfig
@@ -155,6 +155,7 @@ def test_release_drops_local_ref_and_evicts_cache_entry():
 
         agent.release()
         assert agent._llm is None
+        clear_llm_cache()
 
         new_agent = BaseAgent.from_config(_cfg())
         new_agent.invoke("q")
