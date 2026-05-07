@@ -1,6 +1,6 @@
 """Wrapper around LangGraph's StateGraph where each agent is a single node.
-It resolves registered tools and prepends a global agent system prompt before
-calling the LLM.
+It resolves registered tools and prepends the configured per-agent system
+prompt before calling the LLM.
 """
 
 import threading
@@ -19,6 +19,7 @@ from typing import (
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.runnables.config import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -55,20 +56,12 @@ def _llm_cache_key(cfg: LLMConfig) -> _LLMCacheKey:
 
 def _get_or_load_llm(cfg: LLMConfig) -> BaseChatModel:
     key = _llm_cache_key(cfg)
-    cached = _llm_cache.get(key)
-    if cached is not None:
-        return cached
     with _llm_cache_lock:
         cached = _llm_cache.get(key)
         if cached is None:
             cached = LLM.from_config(cfg)
             _llm_cache[key] = cached
         return cached
-
-
-def _drop_llm(cfg: LLMConfig) -> bool:
-    with _llm_cache_lock:
-        return _llm_cache.pop(_llm_cache_key(cfg), None) is not None
 
 
 def clear_llm_cache() -> None:
@@ -97,6 +90,7 @@ class BaseAgent:
         self._tools: List[Callable] = list(tools) if tools else []
         self._llm: Optional[BaseChatModel] = None
         self.checkpointer = checkpointer
+        self._owns_checkpointer = False
         self.graph = self._build_graph()
 
     @classmethod
@@ -108,29 +102,31 @@ class BaseAgent:
         if not isinstance(config, AgentConfig):
             config = load_config(config, AgentConfig)
 
+        owns_checkpointer = False
         if checkpointer is None and config.checkpointer is not None:
             checkpointer = build_checkpointer(config)
+            owns_checkpointer = True
 
         llm_config = replace(config.llm, temperature=config.resolve_temperature())
         tools = resolve_tools(config.tools) if config.tools else []
 
-        return cls(config, llm_config, tools, checkpointer)
+        agent = cls(config, llm_config, tools, checkpointer)
+        agent._owns_checkpointer = owns_checkpointer
+        return agent
 
     @property
     def llm(self) -> BaseChatModel:
         """Lazy-load and cache the LLM on first access."""
         if self._llm is None:
-            base = _get_or_load_llm(self._llm_config)
-            self._llm = base.bind_tools(self._tools) if self._tools else base
+            self._llm = _get_or_load_llm(self._llm_config)
         return self._llm
 
     def release(self) -> None:
-        """Release LLM and close checkpointer resources."""
-        if self.checkpointer is not None:
+        """Release LLM and close checkpointer resources if necessary."""
+        if self._owns_checkpointer and self.checkpointer is not None:
             conn = getattr(self.checkpointer, "conn", None)
             if conn is not None:
                 conn.close()
-        _drop_llm(self._llm_config)
         self._llm = None
 
     def __enter__(self) -> Self:
@@ -150,13 +146,14 @@ class BaseAgent:
         messages: List[BaseMessage] = list(state["messages"])
         if self.config.system_prompt:
             messages = [SystemMessage(content=self.config.system_prompt), *messages]
-        response = self.llm.invoke(messages)
+        llm = self.llm.bind_tools(self._tools) if self._tools else self.llm
+        response = llm.invoke(messages)
         return {"messages": [response]}
 
     def invoke(
         self,
-        query: Union[str, Dict[str, Any]],
-        config: Optional[Dict[str, Any]] = None,
+        query: Union[str, AgentState],
+        config: Optional[RunnableConfig] = None,
     ) -> Dict[str, Any]:
         """Run the agent graph on the given query.
 
@@ -168,7 +165,7 @@ class BaseAgent:
             The final graph state dict.
         """
         if isinstance(query, str):
-            input_state: Dict[str, Any] = {"messages": [HumanMessage(content=query)]}
+            input_state: AgentState = {"messages": [HumanMessage(content=query)]}
         else:
             input_state = query
         return self.graph.invoke(input_state, config=config)
