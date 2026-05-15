@@ -11,8 +11,8 @@ from .base import DetectionEngine, PIISpan
 from .config import DetectionConfig
 from .defaults import (
     DEFAULT_CONFIDENCE_THRESHOLD,
+    DEFAULT_ENTITIES,
     DEFAULT_GLINER_MODEL,
-    DEFAULT_LABELS,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ class GLiNEREngine(DetectionEngine):
     ):
         self._model_name = model_name
         self._entity_types: List[str] = (
-            list(entity_types) if entity_types else list(DEFAULT_LABELS)
+            list(entity_types) if entity_types else list(DEFAULT_ENTITIES)
         )
         self._confidence_threshold = confidence_threshold
 

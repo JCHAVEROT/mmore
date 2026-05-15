@@ -14,7 +14,7 @@ from .base import DetectionEngine, PIISpan
 from .config import DetectionConfig
 from .defaults import (
     DEFAULT_CONFIDENCE_THRESHOLD,
-    DEFAULT_LABELS,
+    DEFAULT_ENTITIES,
     DEFAULT_LLM_CONFIG,
 )
 
@@ -63,7 +63,7 @@ def _build_demos() -> List[Any]:
     return [
         dspy.Example(
             text="John Doe called from 555-1234 about his MRN 87654321.",
-            entity_types=list(DEFAULT_LABELS),
+            entity_types=list(DEFAULT_ENTITIES),
             spans=[
                 _DetectedSpan(text="John Doe", label="PERSON", score=0.95),
                 _DetectedSpan(text="555-1234", label="PHONE", score=0.95),
@@ -72,7 +72,7 @@ def _build_demos() -> List[Any]:
         ).with_inputs("text", "entity_types"),
         dspy.Example(
             text="Patient at 123 Main St emailed jane@example.com on 2024-01-15.",
-            entity_types=list(DEFAULT_LABELS),
+            entity_types=list(DEFAULT_ENTITIES),
             spans=[
                 _DetectedSpan(text="123 Main St", label="LOCATION", score=0.9),
                 _DetectedSpan(text="jane@example.com", label="EMAIL", score=0.95),
@@ -104,7 +104,7 @@ class LLMDetectionEngine(DetectionEngine):
     ):
         self._llm_config = llm_config
         self._entity_types: List[str] = (
-            list(entity_types) if entity_types else list(DEFAULT_LABELS)
+            list(entity_types) if entity_types else list(DEFAULT_ENTITIES)
         )
         self._confidence_threshold = confidence_threshold
 

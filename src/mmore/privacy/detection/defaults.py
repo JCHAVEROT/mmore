@@ -14,8 +14,8 @@ DEFAULT_LLM_CONFIG = LLMConfig(
 
 DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 
-# TODO: Later add new labels to the list
-DEFAULT_LABELS = [
+# TODO: Later add new entities to the list
+DEFAULT_ENTITIES = [
     "PERSON",
     "PHONE",
     "EMAIL",
