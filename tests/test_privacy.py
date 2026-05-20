@@ -1,6 +1,6 @@
 """Integration tests for mmore.privacy.agents."""
 
-from typing import Any
+from typing import Any, Dict, TypedDict
 from unittest.mock import patch
 
 import pytest
@@ -151,3 +151,59 @@ def test_clear_llm_cache(isolate_llm_cache):
         new_agent = BaseAgent.from_config(_cfg())
         new_agent.invoke("q")
         assert mock.call_count == 2
+
+
+# --------------------------------------------------------------------------
+# BaseAgent as a generalized pipeline-node base
+# --------------------------------------------------------------------------
+
+
+class _PipeState(TypedDict, total=False):
+    value: int
+    doubled: int
+
+
+class _DoublerAgent(BaseAgent):
+    """An LLM-less agent on a custom state schema."""
+
+    state_schema = _PipeState
+    node_name = "doubler"
+
+    def _node(self, state: _PipeState) -> Dict[str, Any]:
+        return {"doubled": state["value"] * 2}
+
+
+def test_subclass_runs_with_custom_state_schema_and_no_llm():
+    agent = _DoublerAgent(config=object(), llm_config=None)
+
+    out = agent.graph.invoke({"value": 21})
+
+    assert out["doubled"] == 42
+
+
+def test_node_name_class_attr_is_used_as_graph_node_id():
+    agent = _DoublerAgent(config=object())
+
+    assert agent.name == "doubler"
+    assert "doubler" in agent.graph.get_graph().nodes
+
+
+def test_default_name_falls_back_to_agent_config_name():
+    fake = FakeListChatModel(responses=["ok"])
+    with patch("mmore.privacy.agents.base.LLM.from_config", return_value=fake):
+        agent = BaseAgent.from_config(_cfg(name="answerer"))
+
+    assert agent.name == "answerer"
+
+
+def test_llm_access_without_config_raises_clear_error():
+    agent = _DoublerAgent(config=object(), llm_config=None)
+
+    with pytest.raises(ValueError, match="LLM"):
+        _ = agent.llm
+
+
+def test_node_property_exposes_bound_node_for_composition():
+    agent = _DoublerAgent(config=object())
+
+    assert agent.node({"value": 5}) == {"doubled": 10}

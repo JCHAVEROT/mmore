@@ -1,6 +1,9 @@
-"""Wrapper around LangGraph's StateGraph where each agent is a single node.
-It resolves registered tools and prepends the configured per-agent system
-prompt before calling the LLM.
+"""Base class for privacy agents.
+
+A ``BaseAgent`` is one LangGraph node. By default it calls an LLM on the
+message history. Subclasses override ``state_schema`` and ``_node`` to act on
+a different state (with or without an LLM), and ``node`` exposes the bound
+node so several agents can be combined into one pipeline graph.
 """
 
 import threading
@@ -8,6 +11,7 @@ from typing import (
     Annotated,
     Any,
     Callable,
+    ClassVar,
     Dict,
     List,
     NamedTuple,
@@ -73,12 +77,15 @@ class AgentState(TypedDict):
 
 
 class BaseAgent:
-    """Single-node LangGraph agent compiled from an AgentConfig."""
+    """Single LangGraph node compiled from a config."""
+
+    state_schema: ClassVar[type] = AgentState
+    node_name: ClassVar[Optional[str]] = None
 
     def __init__(
         self,
-        config: AgentConfig,
-        llm_config: LLMConfig,
+        config: Any,
+        llm_config: Optional[LLMConfig] = None,
         tools: Optional[List[Callable]] = None,
         checkpointer: Optional[BaseCheckpointSaver] = None,
     ):
@@ -89,6 +96,16 @@ class BaseAgent:
         self.checkpointer = checkpointer
         self._owns_checkpointer = False
         self.graph = self._build_graph()
+
+    @property
+    def name(self) -> str:
+        return (
+            self.node_name or getattr(self.config, "name", None) or type(self).__name__
+        )
+
+    @property
+    def system_prompt(self) -> str:
+        return getattr(self.config, "system_prompt", "") or ""
 
     @classmethod
     def from_config(
@@ -112,8 +129,15 @@ class BaseAgent:
 
     @property
     def llm(self) -> BaseChatModel:
-        """Lazy-load and cache the LLM on first access."""
+        """Lazy-load and cache the LLM on first access.
+
+        Raises:
+            ValueError: if the agent has no LLM configured. An agent whose
+                node never touches the LLM (e.g. the Detector) is valid.
+        """
         if self._llm is None:
+            if self._llm_config is None:
+                raise ValueError(f"{type(self).__name__} has no LLM configured ")
             self._llm = _get_or_load_llm(self._llm_config)
         return self._llm
 
@@ -131,17 +155,22 @@ class BaseAgent:
     def __exit__(self, *args) -> None:
         self.release()
 
+    @property
+    def node(self) -> Callable[[Any], Dict[str, Any]]:
+        """The bound node callable, for composing into a larger graph."""
+        return self._node
+
     def _build_graph(self):
-        graph = StateGraph(AgentState)
-        graph.add_node(self.config.name, self._node)
-        graph.add_edge(START, self.config.name)
-        graph.add_edge(self.config.name, END)
+        graph = StateGraph(self.state_schema)
+        graph.add_node(self.name, self._node)
+        graph.add_edge(START, self.name)
+        graph.add_edge(self.name, END)
         return graph.compile(checkpointer=self.checkpointer)
 
-    def _node(self, state: AgentState) -> Dict[str, List[BaseMessage]]:
+    def _node(self, state: Any) -> Dict[str, Any]:
         messages: List[BaseMessage] = list(state["messages"])
-        if self.config.system_prompt:
-            messages = [SystemMessage(content=self.config.system_prompt), *messages]
+        if self.system_prompt:
+            messages = [SystemMessage(content=self.system_prompt), *messages]
         llm = self.llm.bind_tools(self._tools) if self._tools else self.llm
         response = llm.invoke(messages)
         return {"messages": [response]}
