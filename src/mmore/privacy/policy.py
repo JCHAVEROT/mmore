@@ -5,7 +5,7 @@ agents in the system (Detector, Sanitizer and Adversarial agents).
 """
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -14,11 +14,13 @@ class PrivacyPolicy:
 
     domain: str
     sensitive_entities: List[str]
-    detection_engines: List[str]
-    confidence_threshold: float
+    detection_engine: str
     sanitization_strategy: str
     consistency: bool
     domain_prompt: str
-    redaction_strictness: str = "standard"
-    sanitizer_system_prompt: str = ""
+    engine_params: Dict[str, Any] = field(default_factory=dict)
+    redaction_strictness: str = (
+        "standard"  # TODO: check if still useful later or delete
+    )
+    sanitizer_system_prompt: str = ""  # TODO: check if still useful later or delete
     flagged_fields: List[str] = field(default_factory=list)

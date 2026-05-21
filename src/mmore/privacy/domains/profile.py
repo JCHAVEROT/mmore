@@ -6,10 +6,10 @@ prompts, and the sanitization defaults. There exists three presets: ``global``,
 ``healthcare`` and ``humanitarian``.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List
 
-from ..detection.defaults import DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_ENTITIES
+from ..detection.constants import DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_ENTITIES
 
 
 class UnknownDomainError(KeyError):
@@ -23,15 +23,14 @@ class DomainProfile:
     name: str
     sensitive_entities: List[str]
     analyzer_system_prompt: str
-    sanitizer_system_prompt: str
+    sanitizer_system_prompt: str  # TODO: remove as sanitizer can be not llm based
     domain_prompt: str
-    default_engines: List[str] = field(default_factory=lambda: ["presidio"])
+    default_engine: str = "presidio"
     default_confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD
     default_strategy: str = "token_masking"
     default_consistency: bool = True
 
 
-# Clinical entities
 _HEALTHCARE_ENTITIES = [
     "PERSON",
     "MRN",
@@ -44,7 +43,34 @@ _HEALTHCARE_ENTITIES = [
     "LOCATION",
 ]
 
-# Humanitarian entities
+
+PRESIDIO_CLINICAL_PATTERNS = [
+    {
+        "entity": "MRN",
+        "patterns": [
+            ("mrn_with_prefix", r"\bMRN[\s:#]*\d{6,10}\b", 0.9),
+            ("mrn_bare_8_digits", r"\b\d{8}\b", 0.4),
+        ],
+        "context": ["mrn", "medical record", "record number", "patient id"],
+    },
+    {
+        "entity": "HOSPITAL_DATE",
+        "patterns": [
+            ("iso_date", r"\b\d{4}-\d{2}-\d{2}\b", 0.6),
+            ("us_date", r"\b\d{1,2}/\d{1,2}/\d{4}\b", 0.6),
+        ],
+        "context": ["admission", "discharge", "appointment", "hospital", "clinic"],
+    },
+    {
+        "entity": "INSURANCE_ID",
+        "patterns": [
+            ("insurance_alnum", r"\b[A-Z]{2,3}\d{6,12}\b", 0.7),
+        ],
+        "context": ["insurance", "policy", "member id", "subscriber"],
+    },
+]
+
+
 _HUMANITARIAN_ENTITIES = [
     "PERSON",
     "LOCATION",
@@ -75,7 +101,7 @@ GLOBAL_PROFILE = DomainProfile(
         "General-purpose context: protect personally identifiable information "
         "(names, contact details, identifiers, locations, dates)."
     ),
-    default_engines=["presidio"],  # TODO: After the experiments adjust these
+    default_engine="presidio",  # TODO: After the experiments adjust these
     default_strategy="token_masking",  # TODO: After the experiments adjust these
 )
 
@@ -97,7 +123,7 @@ HEALTHCARE_PROFILE = DomainProfile(
         "Clinical context: protected health information is highly sensitive; "
         "preserve clinically relevant facts but never patient identity."
     ),
-    default_engines=["presidio"],  # TODO: After the experiments adjust these
+    default_engine="presidio",  # TODO: After the experiments adjust these
     default_strategy="token_masking",  # TODO: After the experiments adjust these
 )
 
@@ -120,7 +146,7 @@ HUMANITARIAN_PROFILE = DomainProfile(
         "people or households is highly sensitive; preserve aggregate "
         "operational facts only."
     ),
-    default_engines=["presidio"],  # TODO: After the experiments adjust these
+    default_engine="presidio",  # TODO: After the experiments adjust these
     default_strategy="token_masking",  # TODO: After the experiments adjust these
 )
 

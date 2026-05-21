@@ -7,23 +7,14 @@ from ..rag.llm import LLMConfig
 
 
 @dataclass
-class ContextAnalyzerConfig:
-    """``privacy.context_analyzer`` block."""
-
+class AnalyzerConfig:
     llm: LLMConfig
     system_prompt: Optional[str] = None
 
 
 @dataclass
-class PrivacyDetectionConfig:
-    """``privacy.detection`` block.
-
-    ``engines`` are short names (``presidio``, ``gliner``, ``openai``,
-    ``llm``) resolved to registered detection tools by the Detector agent.
-    ``llm`` selects the model for the ``llm`` detection engine.
-    """
-
-    engines: List[str] = field(default_factory=list)
+class DetectionConfig:
+    engine: Optional[str] = None
     confidence_threshold: Optional[float] = None
     entity_types: List[str] = field(default_factory=list)
     llm: Optional[LLMConfig] = None
@@ -31,8 +22,7 @@ class PrivacyDetectionConfig:
 
 @dataclass
 class SanitizationConfig:
-    """``privacy.sanitization`` block."""
-
+    engine: Optional[str] = None
     strategy: Optional[str] = None
     consistency: Optional[bool] = None
     llm: Optional[LLMConfig] = None
@@ -40,9 +30,7 @@ class SanitizationConfig:
 
 @dataclass
 class PrivacyConfig:
-    """The ``privacy:`` block of a MMORE config."""
-
     domain: Optional[str] = None
-    context_analyzer: Optional[ContextAnalyzerConfig] = None
-    detection: PrivacyDetectionConfig = field(default_factory=PrivacyDetectionConfig)
+    context_analyzer: Optional[AnalyzerConfig] = None
+    detection: DetectionConfig = field(default_factory=DetectionConfig)
     sanitization: SanitizationConfig = field(default_factory=SanitizationConfig)

@@ -76,6 +76,12 @@ class AgentState(TypedDict):
     messages: Annotated[List[BaseMessage], add_messages]
 
 
+class NodeOutput(TypedDict, total=False):
+    """Generic partial state update returned by any agent node."""
+
+    messages: Annotated[List[BaseMessage], add_messages]
+
+
 class BaseAgent:
     """Single LangGraph node compiled from a config."""
 
@@ -110,7 +116,7 @@ class BaseAgent:
     @classmethod
     def from_config(
         cls,
-        config: Union[AgentConfig, str, Dict[str, Any]],
+        config: Any,
         checkpointer: Optional[BaseCheckpointSaver] = None,
     ) -> Self:
         if not isinstance(config, AgentConfig):
@@ -156,7 +162,7 @@ class BaseAgent:
         self.release()
 
     @property
-    def node(self) -> Callable[[Any], Dict[str, Any]]:
+    def node(self) -> Callable[[Any], NodeOutput]:
         """The bound node callable, for composing into a larger graph."""
         return self._node
 
@@ -167,13 +173,13 @@ class BaseAgent:
         graph.add_edge(self.name, END)
         return graph.compile(checkpointer=self.checkpointer)
 
-    def _node(self, state: Any) -> Dict[str, Any]:
+    def _node(self, state: Any) -> NodeOutput:
         messages: List[BaseMessage] = list(state["messages"])
         if self.system_prompt:
             messages = [SystemMessage(content=self.system_prompt), *messages]
         llm = self.llm.bind_tools(self._tools) if self._tools else self.llm
         response = llm.invoke(messages)
-        return {"messages": [response]}
+        return NodeOutput(messages=[response])
 
     def invoke(
         self,

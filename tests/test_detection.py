@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mmore.privacy.agents.registry import tool_registry
-from mmore.privacy.detection.config import DetectionConfig
+from mmore.privacy.config import DetectionConfig
 from mmore.privacy.detection.gliner_engine import (
     GLiNEREngine,
     clear_gliner_cache,
@@ -126,7 +126,7 @@ def test_detection_config_defaults_when_minimal():
 
     assert cfg.engine == "presidio"
     assert cfg.entity_types == []
-    assert cfg.confidence_threshold == 0.7
+    assert cfg.confidence_threshold is None
     assert cfg.llm is None
 
 

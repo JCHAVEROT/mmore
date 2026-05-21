@@ -9,10 +9,10 @@ from typing_extensions import Self
 
 from ...rag.llm import LLMConfig
 from ..agents.registry import register_tool
+from ..config import DetectionConfig
 from ..dspy_llm import build_dspy_lm
 from .base import DetectionEngine, PIISpan
-from .config import DetectionConfig
-from .defaults import (
+from .constants import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_ENTITIES,
     DEFAULT_LLM_CONFIG,
@@ -116,7 +116,11 @@ class LLMDetectionEngine(DetectionEngine):
         return cls(
             llm_config=config.llm,
             entity_types=config.entity_types or None,
-            confidence_threshold=config.confidence_threshold,
+            confidence_threshold=(
+                config.confidence_threshold
+                if config.confidence_threshold is not None
+                else DEFAULT_CONFIDENCE_THRESHOLD
+            ),
         )
 
     def detect(self, text: str) -> List[PIISpan]:

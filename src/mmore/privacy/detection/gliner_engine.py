@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Optional, Sequence
 from typing_extensions import Self
 
 from ..agents.registry import register_tool
+from ..config import DetectionConfig
 from .base import DetectionEngine, PIISpan
-from .config import DetectionConfig
-from .defaults import (
+from .constants import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_ENTITIES,
     DEFAULT_GLINER_MODEL,
@@ -69,7 +69,11 @@ class GLiNEREngine(DetectionEngine):
         """Build an engine from a ``DetectionConfig``."""
         return cls(
             entity_types=config.entity_types or None,
-            confidence_threshold=config.confidence_threshold,
+            confidence_threshold=(
+                config.confidence_threshold
+                if config.confidence_threshold is not None
+                else DEFAULT_CONFIDENCE_THRESHOLD
+            ),
         )
 
     @property

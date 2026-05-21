@@ -10,12 +10,12 @@ from typing import Any, List, Optional, Sequence
 from typing_extensions import Self
 
 from ..agents.registry import register_tool
+from ..config import DetectionConfig
+from ..domains.profile import PRESIDIO_CLINICAL_PATTERNS
 from .base import DetectionEngine, PIISpan
-from .config import DetectionConfig
-from .defaults import (
+from .constants import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_LANGUAGE,
-    PRESIDIO_CLINICAL_PATTERNS,
 )
 
 
@@ -92,7 +92,11 @@ class PresidioEngine(DetectionEngine):
     def from_config(cls, config: DetectionConfig) -> Self:
         return cls(
             entity_types=config.entity_types or None,
-            confidence_threshold=config.confidence_threshold,
+            confidence_threshold=(
+                config.confidence_threshold
+                if config.confidence_threshold is not None
+                else DEFAULT_CONFIDENCE_THRESHOLD
+            ),
         )
 
     @property
