@@ -202,7 +202,7 @@ def test_gliner_engine_shares_model_cache_across_instances():
         return_value=fake,
     ) as mock_load:
         a = GLiNEREngine(confidence_threshold=0.4)
-        b = GLiNEREngine(entity_types=["PERSON"], confidence_threshold=0.9)
+        b = GLiNEREngine(sensitive_entities=["PERSON"], confidence_threshold=0.9)
         a.detect("x")
         b.detect("y")
         assert mock_load.call_count == 1
@@ -285,24 +285,6 @@ def test_openai_filter_engine_filters_below_threshold():
     assert spans[0].label == "PERSON"
 
 
-def test_openai_filter_engine_restricts_to_entity_types():
-    fake = _fake_openai_pipeline(
-        [
-            {"start": 0, "end": 10, "entity_group": "PERSON", "score": 0.95},
-            {"start": 11, "end": 21, "entity_group": "DATE", "score": 0.90},
-        ]
-    )
-    with patch(
-        "mmore.privacy.detection.openai_filter_engine._load_openai_filter_pipeline",
-        return_value=fake,
-    ):
-        engine = OpenAIFilterEngine(entity_types=["PERSON"], confidence_threshold=0.5)
-        spans = engine.detect("synthetic")
-
-    assert len(spans) == 1
-    assert spans[0].label == "PERSON"
-
-
 def test_openai_filter_engine_shares_pipeline_cache_across_instances():
     fake = _fake_openai_pipeline([])
     with patch(
@@ -314,10 +296,9 @@ def test_openai_filter_engine_shares_pipeline_cache_across_instances():
         assert mock_load.call_count == 1
 
 
-def test_openai_filter_engine_from_config_applies_threshold_and_labels():
+def test_openai_filter_engine_from_config_applies_threshold():
     cfg = DetectionConfig(
         engine="openai_filter",
-        entity_types=["PERSON"],
         confidence_threshold=0.6,
     )
     engine = OpenAIFilterEngine.from_config(cfg)
@@ -335,9 +316,7 @@ def test_openai_filter_engine_from_config_applies_threshold_and_labels():
     ):
         spans = engine.detect("synthetic")
 
-    assert len(spans) == 1
-    assert spans[0].label == "PERSON"
-    assert spans[0].score == 0.95
+    assert {(s.label, s.score) for s in spans} == {("PERSON", 0.95), ("EMAIL", 0.95)}
 
 
 def test_detect_pii_presidio_is_registered():
@@ -372,7 +351,7 @@ def test_presidio_engine_passes_threshold_and_entity_types_to_analyzer():
         return_value=fake,
     ):
         engine = PresidioEngine(
-            entity_types=["PERSON", "MRN"], confidence_threshold=0.55
+            sensitive_entities=["PERSON", "MRN"], confidence_threshold=0.55
         )
         engine.detect("synthetic note")
 
@@ -529,7 +508,7 @@ def test_llm_engine_passes_text_and_entity_types_to_predictor():
     cfg = LLMConfig(llm_name="gpt2")
     with _patch_dspy_engine(predictor):
         engine = LLMDetectionEngine(
-            cfg, entity_types=["PERSON", "MRN"], confidence_threshold=0.5
+            cfg, sensitive_entities=["PERSON", "MRN"], confidence_threshold=0.5
         )
         engine.detect("synthetic note")
 

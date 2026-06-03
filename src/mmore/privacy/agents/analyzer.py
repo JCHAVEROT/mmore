@@ -395,11 +395,13 @@ class ContextPolicyAnalyzerAgent(BaseAgent):
 
         defaults = ENGINE_DEFAULT_PARAMS.get(engine_short)
         if detection_cfg.confidence_threshold is not None:
-            engine_params = asdict(defaults)
-            engine_params["confidence_threshold"] = detection_cfg.confidence_threshold
+            detection_params = asdict(defaults)
+            detection_params["confidence_threshold"] = (
+                detection_cfg.confidence_threshold
+            )
         else:
             selected = self._select_params(engine_short, query, chunks)
-            engine_params = selected if selected is not None else asdict(defaults)
+            detection_params = selected if selected is not None else asdict(defaults)
 
         strategy = sanitization_cfg.strategy or profile.default_strategy
         consistency = (
@@ -419,7 +421,7 @@ class ContextPolicyAnalyzerAgent(BaseAgent):
             domain=domain,
             sensitive_entities=list(sensitive_entities),
             detection_engine=engine_short,
-            engine_params=engine_params,
+            detection_params=detection_params,
             sanitization_strategy=strategy,
             consistency=consistency,
             domain_prompt=profile.domain_prompt,

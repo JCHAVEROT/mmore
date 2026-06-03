@@ -2,12 +2,13 @@
 
 import logging
 import threading
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List
 
 from typing_extensions import Self
 
 from ..agents.registry import register_tool
 from ..config import DetectionConfig
+from ..policy import PrivacyPolicy
 from .base import DetectionEngine, PIISpan
 from .constants import DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_OPENAI_FILTER_MODEL
 
@@ -49,26 +50,22 @@ class OpenAIFilterEngine(DetectionEngine):
     """Detect PII spans with the token classification model
     ``openai/privacy-filter`` from HuggingFace.
 
-    Each instance carries its own ``entity_types`` and ``confidence_threshold``,
-    pipelines with the same ``model_name`` are shared via ``_pipeline_cache``.
+    The model has a fixed label set so entity selection is not configurable.
+    Each instance carries its own ``confidence_threshold``, pipelines with the
+    same ``model_name`` are shared via ``_pipeline_cache``.
     """
 
     def __init__(
         self,
         model_name: str = DEFAULT_OPENAI_FILTER_MODEL,
-        entity_types: Optional[Sequence[str]] = None,
         confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
     ):
         self._model_name = model_name
-        self._entity_types: Optional[List[str]] = (
-            list(entity_types) if entity_types else None
-        )
         self._confidence_threshold = confidence_threshold
 
     @classmethod
     def from_config(cls, config: DetectionConfig) -> Self:
         return cls(
-            entity_types=config.entity_types or None,
             confidence_threshold=(
                 config.confidence_threshold
                 if config.confidence_threshold is not None
@@ -88,8 +85,6 @@ class OpenAIFilterEngine(DetectionEngine):
             if score < self._confidence_threshold:
                 continue
             label = str(r.get("entity_group") or r.get("entity") or "")
-            if self._entity_types is not None and label not in self._entity_types:
-                continue
             spans.append(
                 PIISpan(
                     start=int(r["start"]),
@@ -102,14 +97,10 @@ class OpenAIFilterEngine(DetectionEngine):
 
 
 @register_tool("detect_pii_openai_filter")
-def detect_pii_openai_filter(text: str) -> List[PIISpan]:
-    """Detect PII spans in ``text`` using a default-configured openai/privacy-filter engine.
-
-    Agents needing per-config behavior should be wired by setup code that
-    builds an ``OpenAIFilterEngine.from_config(detection_cfg)`` and registers
-    its ``detect()`` function under a distinct tool name, e.g.::
-
-        engine = OpenAIFilterEngine.from_config(detection_cfg)
-        register_tool("detect_pii_openai_filter_custom", engine.detect)
-    """
-    return OpenAIFilterEngine().detect(text)
+def detect_pii_openai_filter(text: str, policy: PrivacyPolicy) -> List[PIISpan]:
+    """Detect PII spans in ``text`` using an openai/privacy-filter engine
+    configured from ``policy``."""
+    if policy.sensitive_entities:
+        logger.warning("OpenAi Filter has a fixed sensitive label lists.")
+    engine = OpenAIFilterEngine(**policy.detection_params)
+    return engine.detect(text)

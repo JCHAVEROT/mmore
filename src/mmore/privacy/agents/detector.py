@@ -44,7 +44,9 @@ _RISK_DENSITY_HIGH = 0.02
 # ========================================================================
 
 
-def _resolve_engine_tool(engine_short: str) -> Callable[..., List[PIISpan]]:
+def _resolve_engine_tool(
+    engine_short: str,
+) -> Callable[[str, PrivacyPolicy], List[PIISpan]]:
     """Resolve the engine short name to a registered detection tool callable."""
     tool_name = ENGINE_TOOL_NAMES.get(engine_short)
     if tool_name is None:
@@ -130,11 +132,7 @@ class DetectorAgent(BaseAgent):
 
         spans_per_chunk: List[List[PIISpan]] = []
         for chunk in chunks:
-            try:
-                raw = tool(chunk, **policy.engine_params)
-            except TypeError:
-                # Tool does not accept the policy's engine kwargs
-                raw = tool(chunk)
+            raw = tool(chunk, policy)
             spans_per_chunk.append(_dedupe_spans(raw))
 
         risk = _build_risk(chunks, spans_per_chunk)

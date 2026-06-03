@@ -18,7 +18,8 @@ class PrivacyPolicy:
     sanitization_strategy: str
     consistency: bool
     domain_prompt: str
-    engine_params: Dict[str, Any] = field(default_factory=dict)
+    detection_params: Dict[str, Any] = field(default_factory=dict)
+    sanitization_params: Dict[str, Any] = field(default_factory=dict)
     redaction_strictness: str = (
         "standard"  # TODO: check if still useful later or delete
     )

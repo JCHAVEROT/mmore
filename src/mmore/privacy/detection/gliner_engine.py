@@ -8,6 +8,7 @@ from typing_extensions import Self
 
 from ..agents.registry import register_tool
 from ..config import DetectionConfig
+from ..policy import PrivacyPolicy
 from .base import DetectionEngine, PIISpan
 from .constants import (
     DEFAULT_CONFIDENCE_THRESHOLD,
@@ -55,20 +56,22 @@ class GLiNEREngine(DetectionEngine):
     def __init__(
         self,
         model_name: str = DEFAULT_GLINER_MODEL,
-        entity_types: Optional[Sequence[str]] = None,
+        sensitive_entities: Optional[Sequence[str]] = None,
         confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+        multi_label: bool = False,
     ):
         self._model_name = model_name
-        self._entity_types: List[str] = (
-            list(entity_types) if entity_types else list(DEFAULT_ENTITIES)
+        self._sensitive_entities: List[str] = (
+            list(sensitive_entities) if sensitive_entities else list(DEFAULT_ENTITIES)
         )
         self._confidence_threshold = confidence_threshold
+        self._multi_label = multi_label
 
     @classmethod
     def from_config(cls, config: DetectionConfig) -> Self:
         """Build an engine from a ``DetectionConfig``."""
         return cls(
-            entity_types=config.entity_types or None,
+            sensitive_entities=config.entity_types or None,
             confidence_threshold=(
                 config.confidence_threshold
                 if config.confidence_threshold is not None
@@ -84,9 +87,9 @@ class GLiNEREngine(DetectionEngine):
     def detect(self, text: str) -> List[PIISpan]:
         raw = self.model.predict_entities(
             text=text,
-            labels=self._entity_types,
+            labels=self._sensitive_entities,
             threshold=self._confidence_threshold,
-            multi_label=False,
+            multi_label=self._multi_label,
         )
         return [
             PIISpan(
@@ -100,14 +103,10 @@ class GLiNEREngine(DetectionEngine):
 
 
 @register_tool("detect_pii_gliner")
-def detect_pii_gliner(text: str) -> List[PIISpan]:
-    """Detect PII spans in ``text`` using a default-configured GLiNER engine.
-
-    Agents needing per-config behavior should be wired by setup code that
-    builds a ``GLiNEREngine.from_config(detection_cfg)`` and registers its
-    ``detect()`` function under a distinct tool name, e.g.::
-
-        engine = GLiNEREngine.from_config(detection_cfg)
-        register_tool("detect_pii_gliner_custom", engine.detect)
-    """
-    return GLiNEREngine().detect(text)
+def detect_pii_gliner(text: str, policy: PrivacyPolicy) -> List[PIISpan]:
+    """Detect PII spans in ``text`` using a GLiNER engine configured from ``policy``."""
+    engine = GLiNEREngine(
+        sensitive_entities=policy.sensitive_entities or None,
+        **policy.detection_params,
+    )
+    return engine.detect(text)

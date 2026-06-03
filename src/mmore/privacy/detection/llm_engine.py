@@ -11,6 +11,7 @@ from ...rag.llm import LLMConfig
 from ..agents.registry import register_tool
 from ..config import DetectionConfig
 from ..dspy_llm import build_dspy_lm
+from ..policy import PrivacyPolicy
 from .base import DetectionEngine, PIISpan
 from .constants import (
     DEFAULT_CONFIDENCE_THRESHOLD,
@@ -92,18 +93,18 @@ def _build_predictor() -> dspy.Predict:
 class LLMDetectionEngine(DetectionEngine):
     """Detect PII spans by prompting an LLM with a typed DSPy signature.
 
-    Each instance carries its own ``LLMConfig``, ``entity_types`` and
+    Each instance carries its own ``LLMConfig``, ``sensitive_entities`` and
     ``confidence_threshold``."""
 
     def __init__(
         self,
         llm_config: LLMConfig,
-        entity_types: Optional[Sequence[str]] = None,
+        sensitive_entities: Optional[Sequence[str]] = None,
         confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
     ):
         self._llm_config = llm_config
-        self._entity_types: List[str] = (
-            list(entity_types) if entity_types else list(DEFAULT_ENTITIES)
+        self._sensitive_entities: List[str] = (
+            list(sensitive_entities) if sensitive_entities else list(DEFAULT_ENTITIES)
         )
         self._confidence_threshold = confidence_threshold
         self._llm: Optional[dspy.BaseLM] = None
@@ -116,7 +117,7 @@ class LLMDetectionEngine(DetectionEngine):
             raise ValueError("DetectionConfig.llm must be set")
         return cls(
             llm_config=config.llm,
-            entity_types=config.entity_types or None,
+            sensitive_entities=config.entity_types or None,
             confidence_threshold=(
                 config.confidence_threshold
                 if config.confidence_threshold is not None
@@ -145,7 +146,7 @@ class LLMDetectionEngine(DetectionEngine):
         predictor = self.predictor
         try:
             with dspy.context(lm=lm):
-                prediction = predictor(text=text, entity_types=self._entity_types)
+                prediction = predictor(text=text, entity_types=self._sensitive_entities)
         except Exception as e:
             logger.warning("LLM detection failed (%s), returning no spans", e)
             return []
@@ -178,14 +179,19 @@ class LLMDetectionEngine(DetectionEngine):
 
 
 @register_tool("detect_pii_llm")
-def detect_pii_llm(text: str) -> List[PIISpan]:
-    """Detect PII spans in ``text`` using a default-configured LLM engine.
+def detect_pii_llm(text: str, policy: PrivacyPolicy) -> List[PIISpan]:
+    """Detect PII spans in ``text`` using an LLM engine configured from ``policy``.
 
-    Agents needing per-config behavior should be wired by setup code that
-    builds an ``LLMDetectionEngine.from_config(detection_cfg)`` and registers
-    its ``detect()`` function under a distinct tool name, e.g.::
-
-        engine = LLMDetectionEngine.from_config(detection_cfg)
-        register_tool("detect_pii_llm_custom", engine.detect)
+    The policy's ``sensitive_entities`` set the engine's entity labels and
+    ``detection_params`` (e.g. ``confidence_threshold``) are forwarded to the
+    engine constructor. The LLM backend uses ``DEFAULT_LLM_CONFIG`` since
+    the policy does not carry an ``LLMConfig``; setup code wanting a custom
+    LLM should build ``LLMDetectionEngine.from_config(detection_cfg)`` and
+    register its ``detect()`` under a distinct tool name.
     """
-    return LLMDetectionEngine(DEFAULT_LLM_CONFIG).detect(text)
+    engine = LLMDetectionEngine(
+        DEFAULT_LLM_CONFIG,
+        sensitive_entities=policy.sensitive_entities or None,
+        **policy.detection_params,
+    )
+    return engine.detect(text)
