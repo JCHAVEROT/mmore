@@ -6,7 +6,6 @@ a different state (with or without an LLM), and ``node`` exposes the bound
 node so several agents can be combined into one pipeline graph.
 """
 
-import threading
 from typing import (
     Annotated,
     Any,
@@ -14,7 +13,6 @@ from typing import (
     ClassVar,
     Dict,
     List,
-    NamedTuple,
     Optional,
     TypedDict,
     Union,
@@ -30,42 +28,45 @@ from typing_extensions import Self
 
 from ...rag.llm import LLM, LLMConfig
 from ...utils import load_config
+from .._cache import MODEL_REGISTRY
+from ..dspy_llm import get_local_hf_pipeline
 from .checkpointer import build_checkpointer
 from .config import AgentConfig
 from .registry import resolve_tools
 
-
-class _LLMCacheKey(NamedTuple):
-    llm_name: str
-    base_url: str | None
-    provider: str | None
+_CACHE_PREFIX = "agent_llm"
 
 
-_llm_cache: Dict[_LLMCacheKey, BaseChatModel] = {}
-_llm_cache_lock = threading.Lock()
+def _llm_cache_key(config: LLMConfig) -> str:
+    return f"{_CACHE_PREFIX}:{config.llm_name}:{config.base_url}:{config.provider}"
 
 
-def _llm_cache_key(cfg: LLMConfig) -> _LLMCacheKey:
-    return _LLMCacheKey(
-        llm_name=cfg.llm_name,
-        base_url=cfg.base_url,
-        provider=cfg.provider,
+def _build_chat_model(config: LLMConfig) -> BaseChatModel:
+    """Build the chat model for ``config``.
+
+    Local HF models wrap the shared registry pipeline, so the weights are
+    loaded once and reused by every agent and engine using the same model.
+    """
+    if config.provider == "HF" and config.base_url is None:
+        from langchain_huggingface import ChatHuggingFace, HuggingFacePipeline
+
+        pipe = get_local_hf_pipeline(config.llm_name)
+        return ChatHuggingFace(
+            llm=HuggingFacePipeline(pipeline=pipe, model_id=config.llm_name),
+            tokenizer=pipe.tokenizer,
+        )
+    return LLM.from_config(config)
+
+
+def _get_or_load_llm(config: LLMConfig) -> BaseChatModel:
+    return MODEL_REGISTRY.get_or_load(
+        _llm_cache_key(config), lambda: _build_chat_model(config)
     )
 
 
-def _get_or_load_llm(cfg: LLMConfig) -> BaseChatModel:
-    key = _llm_cache_key(cfg)
-    with _llm_cache_lock:
-        cached = _llm_cache.get(key)
-        if cached is None:
-            cached = LLM.from_config(cfg)
-            _llm_cache[key] = cached
-        return cached
-
-
 def clear_llm_cache() -> None:
-    with _llm_cache_lock:
-        _llm_cache.clear()
+    """Drop all cached agent chat models."""
+    MODEL_REGISTRY.clear(prefix=_CACHE_PREFIX)
 
 
 class AgentState(TypedDict):
