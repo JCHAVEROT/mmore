@@ -21,10 +21,10 @@ from typing_extensions import Self
 from ...utils import load_config
 from ..config import PrivacyConfig
 from ..detection.constants import (
-    ENGINE_DEFAULT_PARAMS,
-    ENGINE_GUIDANCE,
-    ENGINE_PARAM_GUIDANCE,
-    ENGINE_TOOL_NAMES,
+    DETECTION_DEFAULT_PARAMS,
+    DETECTION_GUIDANCE,
+    DETECTION_PARAM_GUIDANCE,
+    DETECTION_TOOL_NAMES,
     THRESHOLD_LEVELS,
 )
 from ..domains.profile import DOMAIN_PROFILES, get_domain_profile
@@ -75,7 +75,7 @@ _LABEL_EXPAND_INSTRUCTION = (
 _QUERY_DESC = "the user request"
 _CONTEXT_DESC = "the retrieved context (concatenation of the raw chunks)"
 _DOMAIN_DESC = "exactly one of: global, healthcare, humanitarian"
-_ENGINE_GUIDANCE_DESC = "per-engine guidance: pros, cons, and when to prefer each"
+_DETECTION_GUIDANCE_DESC = "per-engine guidance: pros, cons, and when to prefer each"
 _ENGINE_OUTPUT_DESC = "exactly one of: presidio, gliner, openai, llm"
 _PARAM_GUIDANCE_DESC = "engine-specific guidance for each tunable parameter"
 _THRESHOLD_OUTPUT_DESC = "exactly one of: low, medium, high"
@@ -90,7 +90,7 @@ _LABEL_NON_ID_RE = re.compile(r"[^A-Z0-9_]")
 
 
 # ========================================================================
-# DSPy signatures (typed)
+# DSPy signatures
 # ========================================================================
 
 
@@ -105,7 +105,7 @@ class _DomainClassifySignature(dspy.Signature):
 class _EngineSelectSignature(dspy.Signature):
     query: str = dspy.InputField(desc=_QUERY_DESC)
     context: str = dspy.InputField(desc=_CONTEXT_DESC)
-    engine_guidance: str = dspy.InputField(desc=_ENGINE_GUIDANCE_DESC)
+    engine_guidance: str = dspy.InputField(desc=_DETECTION_GUIDANCE_DESC)
     engine: Literal["presidio", "gliner", "openai", "llm"] = dspy.OutputField(
         desc=_ENGINE_OUTPUT_DESC
     )
@@ -218,7 +218,7 @@ def _build_param_predictor(engine: str) -> Any | None:
 
 
 def _format_engine_guidance() -> str:
-    return "\n".join(f"- {name}: {desc}" for name, desc in ENGINE_GUIDANCE.items())
+    return "\n".join(f"- {name}: {desc}" for name, desc in DETECTION_GUIDANCE.items())
 
 
 def _parse_param_prediction(  # TODO: check once final implemented new parameters to add
@@ -311,16 +311,16 @@ class ContextPolicyAnalyzerAgent(BaseAgent):
         engine = str(getattr(prediction, "engine", "")).strip().lower()
         return (
             engine
-            if engine in ENGINE_TOOL_NAMES
-            and ENGINE_TOOL_NAMES[engine] in tool_registry
+            if engine in DETECTION_TOOL_NAMES
+            and DETECTION_TOOL_NAMES[engine] in tool_registry
             else None
         )
 
     def _resolve_engine(self, requested: str, profile_default: str) -> str:
         """Validate the requested engine."""
         if (
-            requested in ENGINE_TOOL_NAMES
-            and ENGINE_TOOL_NAMES[requested] in tool_registry
+            requested in DETECTION_TOOL_NAMES
+            and DETECTION_TOOL_NAMES[requested] in tool_registry
         ):
             return requested
         logger.warning(
@@ -367,7 +367,7 @@ class ContextPolicyAnalyzerAgent(BaseAgent):
                 prediction = predictor(
                     query=query,
                     context="\n\n".join(chunks),
-                    param_guidance=ENGINE_PARAM_GUIDANCE.get(engine, ""),
+                    param_guidance=DETECTION_PARAM_GUIDANCE.get(engine, ""),
                 )
         except Exception as e:
             logger.warning(
@@ -393,7 +393,7 @@ class ContextPolicyAnalyzerAgent(BaseAgent):
         else:
             engine_short = self._select_engine(query, chunks) or profile.default_engine
 
-        defaults = ENGINE_DEFAULT_PARAMS.get(engine_short)
+        defaults = DETECTION_DEFAULT_PARAMS.get(engine_short)
         if detection_cfg.confidence_threshold is not None:
             detection_params = asdict(defaults)
             detection_params["confidence_threshold"] = (

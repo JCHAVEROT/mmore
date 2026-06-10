@@ -19,7 +19,7 @@ from typing_extensions import Self
 from ...utils import load_config
 from ..config import PrivacyConfig
 from ..detection.base import PIISpan
-from ..detection.constants import ENGINE_TOOL_NAMES
+from ..detection.constants import DETECTION_TOOL_NAMES
 from ..policy import PrivacyPolicy
 from ..risk import RiskAssessment
 from .base import BaseAgent
@@ -48,11 +48,11 @@ def _resolve_engine_tool(
     engine_short: str,
 ) -> Callable[[str, PrivacyPolicy], List[PIISpan]]:
     """Resolve the engine short name to a registered detection tool callable."""
-    tool_name = ENGINE_TOOL_NAMES.get(engine_short)
+    tool_name = DETECTION_TOOL_NAMES.get(engine_short)
     if tool_name is None:
         raise KeyError(
             f"Unknown detection engine '{engine_short}'. "
-            f"Known engines: {sorted(ENGINE_TOOL_NAMES)}"
+            f"Known engines: {sorted(DETECTION_TOOL_NAMES)}"
         )
     if tool_name not in tool_registry:
         raise KeyError(

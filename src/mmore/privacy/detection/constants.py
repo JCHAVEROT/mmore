@@ -25,7 +25,7 @@ DEFAULT_CONFIDENCE_THRESHOLD = THRESHOLD_LEVELS["medium"]
 
 
 # Short engine names used in YAML configs mapped to the tool names
-ENGINE_TOOL_NAMES = {
+DETECTION_TOOL_NAMES = {
     "presidio": "detect_pii_presidio",
     "gliner": "detect_pii_gliner",
     "openai": "detect_pii_openai",
@@ -35,7 +35,7 @@ ENGINE_TOOL_NAMES = {
 
 # Per-engine guidance for the analyzer's engine selector
 # TODO: refine after experiments with pros and cons
-ENGINE_GUIDANCE: Dict[str, str] = {
+DETECTION_GUIDANCE: Dict[str, str] = {
     "presidio": (
         "Presidio: rule-based detection + spaCy NER, augmented with the "
         "clinical recognizers shipped."
@@ -80,44 +80,39 @@ class LLMDetectionParams(BaseDetectionParams):
     pass
 
 
-ENGINE_DEFAULT_PARAMS: Dict[str, BaseDetectionParams] = {
+DETECTION_DEFAULT_PARAMS: Dict[str, BaseDetectionParams] = {
     "presidio": PresidioParams(),
     "gliner": GLiNERParams(),
     "openai": OpenAIFilterParams(),
     "llm": LLMDetectionParams(),
 }
 
+_CONFIDENCE_THRESHOLD_GUIDANCE = (
+    "- confidence_threshold: how strict we are when deciding whether a span truly deserves a label.\n"
+    "  - low: favor recall, include weak or implicit signals.\n"
+    "  - medium: balanced, label when reasoning is plausible.\n"
+    "  - high: favor precision, only accept well-justified matches."
+)
+
 # Per-engine guidance for the analyzer's engine parameter selector
 # TODO: refine after experiments
-ENGINE_PARAM_GUIDANCE: Dict[str, str] = {
+DETECTION_PARAM_GUIDANCE: Dict[str, str] = {
     "presidio": (
         "Presidio (rule-based + spaCy NER + clinical recognizers).\n"
-        "- confidence_threshold: how strict we are when deciding whether a span truly deserves a label.\n"
-        "  • low: favor recall; include weak or implicit signals.\n"
-        "  • medium: balanced; label when reasoning is plausible.\n"
-        "  • high: favor precision; only accept well-justified matches."
+        f"{_CONFIDENCE_THRESHOLD_GUIDANCE}"
     ),
     "gliner": (
         "GLiNER (zero-shot NER over arbitrary labels).\n"
-        "- confidence_threshold: how strict we are when deciding whether a span truly deserves a label.\n"
-        "  • low: favor recall; include weak or implicit signals.\n"
-        "  • medium: balanced; label when reasoning is plausible.\n"
-        "  • high: favor precision; only accept well-justified matches.\n"
+        f"{_CONFIDENCE_THRESHOLD_GUIDANCE}\n"
         "- multi_label: true allows overlapping labels; false picks one label per span."
     ),
     "openai": (
         "openai/privacy-filter (HF token-classification).\n"
-        "- confidence_threshold: how strict we are when deciding whether a span truly deserves a label.\n"
-        "  • low: favor recall; include weak or implicit signals.\n"
-        "  • medium: balanced; label when reasoning is plausible.\n"
-        "  • high: favor precision; only accept well-justified matches."
+        f"{_CONFIDENCE_THRESHOLD_GUIDANCE}"
     ),
     "llm": (
         "LLM-backed detection (DSPy structured output).\n"
-        "- confidence_threshold: how strict we are when deciding whether a span truly deserves a label.\n"
-        "  • low: favor recall; include weak or implicit signals.\n"
-        "  • medium: balanced; label when reasoning is plausible.\n"
-        "  • high: favor precision; only accept well-justified matches."
+        f"{_CONFIDENCE_THRESHOLD_GUIDANCE}"
     ),
 }
 
