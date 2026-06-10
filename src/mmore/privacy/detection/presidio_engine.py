@@ -4,11 +4,13 @@ Wraps ``presidio_analyzer.AnalyzerEngine`` (rule-based and spaCy NER) with
 possibility to add custom clinical recognizers.
 """
 
-import threading
-from typing import Any, List, Optional, Sequence
+import importlib
+import logging
+from typing import TYPE_CHECKING, List, Optional, Sequence
 
 from typing_extensions import Self
 
+from .._cache import MODEL_REGISTRY
 from ..agents.registry import register_tool
 from ..config import DetectionConfig
 from ..domains.profile import PRESIDIO_CLINICAL_PATTERNS
@@ -17,14 +19,38 @@ from .base import DetectionEngine, PIISpan
 from .constants import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_LANGUAGE,
+    DEFAULT_PRESIDIO_SPACY_MODEL,
 )
 
+if TYPE_CHECKING:
+    from presidio_analyzer import AnalyzerEngine, PatternRecognizer
 
-def _build_clinical_recognizers() -> List[Any]:
+logger = logging.getLogger(__name__)
+
+_CACHE_PREFIX = "presidio"
+
+
+def _ensure_spacy_model(model_name: str) -> None:
+    """Make sure the spaCy model for Presidio's NLP engine is installed."""
+    import spacy
+
+    if spacy.util.is_package(model_name):
+        return
+    logger.warning(
+        "spaCy model %r not found, downloading it...",
+        model_name,
+    )
+    from spacy.cli.download import download
+
+    download(model_name)
+    importlib.invalidate_caches()
+
+
+def _build_clinical_recognizers() -> "List[PatternRecognizer]":
     """Build the clinical-domain custom recognizers."""
     from presidio_analyzer import Pattern, PatternRecognizer
 
-    recognizers: List[Any] = []
+    recognizers: List[PatternRecognizer] = []
     for spec in PRESIDIO_CLINICAL_PATTERNS:
         recognizers.append(
             PatternRecognizer(
@@ -39,35 +65,20 @@ def _build_clinical_recognizers() -> List[Any]:
     return recognizers
 
 
-def _load_presidio_analyzer() -> Any:
+def _load_presidio_analyzer() -> "AnalyzerEngine":
     """Build a ``presidio_analyzer.AnalyzerEngine`` with custom clinical recognizers."""
     from presidio_analyzer import AnalyzerEngine
 
+    _ensure_spacy_model(DEFAULT_PRESIDIO_SPACY_MODEL)
     analyzer = AnalyzerEngine()
     for recognizer in _build_clinical_recognizers():
         analyzer.registry.add_recognizer(recognizer)
     return analyzer
 
 
-_analyzer_cache: Optional[Any] = None
-_analyzer_cache_lock = threading.Lock()
-
-
-def _get_or_load_analyzer() -> Any:
-    global _analyzer_cache
-    if _analyzer_cache is not None:
-        return _analyzer_cache
-    with _analyzer_cache_lock:
-        if _analyzer_cache is None:
-            _analyzer_cache = _load_presidio_analyzer()
-        return _analyzer_cache
-
-
 def clear_presidio_cache() -> None:
     """Drop the cached analyzer."""
-    global _analyzer_cache
-    with _analyzer_cache_lock:
-        _analyzer_cache = None
+    MODEL_REGISTRY.clear(prefix=_CACHE_PREFIX)
 
 
 class PresidioEngine(DetectionEngine):
@@ -102,8 +113,10 @@ class PresidioEngine(DetectionEngine):
         )
 
     @property
-    def analyzer(self) -> Any:
-        return _get_or_load_analyzer()
+    def analyzer(self) -> "AnalyzerEngine":
+        return MODEL_REGISTRY.get_or_load(
+            f"{_CACHE_PREFIX}:{DEFAULT_PRESIDIO_SPACY_MODEL}", _load_presidio_analyzer
+        )
 
     def detect(self, text: str) -> List[PIISpan]:
         results = self.analyzer.analyze(

@@ -1,11 +1,11 @@
 """GLiNER-based PII detection engine."""
 
 import logging
-import threading
-from typing import Any, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, List, Optional, Sequence
 
 from typing_extensions import Self
 
+from .._cache import MODEL_REGISTRY
 from ..agents.registry import register_tool
 from ..config import DetectionConfig
 from ..policy import PrivacyPolicy
@@ -16,34 +16,30 @@ from .constants import (
     DEFAULT_GLINER_MODEL,
 )
 
+if TYPE_CHECKING:
+    from gliner.model import BaseEncoderGLiNER
+
 logger = logging.getLogger(__name__)
 
-_model_cache: Dict[str, Any] = {}
-_model_cache_lock = threading.Lock()
+_CACHE_PREFIX = "gliner"
 
 
-def _load_gliner_model(model_name: str) -> Any:
+def _load_gliner_model(model_name: str) -> "BaseEncoderGLiNER":
+    import torch
     from gliner import GLiNER
 
-    return GLiNER.from_pretrained(model_name)
-
-
-def _get_or_load_model(model_name: str) -> Any:
-    cached = _model_cache.get(model_name)
-    if cached is not None:
-        return cached
-    with _model_cache_lock:
-        cached = _model_cache.get(model_name)
-        if cached is None:
-            cached = _load_gliner_model(model_name)
-            _model_cache[model_name] = cached
-        return cached
+    if torch.backends.mps.is_available():
+        device = "mps"
+    elif torch.cuda.is_available():
+        device = "cuda"
+    else:
+        device = "cpu"
+    return GLiNER.from_pretrained(model_name).to(device)
 
 
 def clear_gliner_cache() -> None:
     """Drop all cached GLiNER models."""
-    with _model_cache_lock:
-        _model_cache.clear()
+    MODEL_REGISTRY.clear(prefix=_CACHE_PREFIX)
 
 
 class GLiNEREngine(DetectionEngine):
@@ -80,9 +76,12 @@ class GLiNEREngine(DetectionEngine):
         )
 
     @property
-    def model(self) -> Any:
+    def model(self) -> "BaseEncoderGLiNER":
         """Lazy-load and cache the LLM on first access."""
-        return _get_or_load_model(self._model_name)
+        return MODEL_REGISTRY.get_or_load(
+            f"{_CACHE_PREFIX}:{self._model_name}",
+            lambda: _load_gliner_model(self._model_name),
+        )
 
     def detect(self, text: str) -> List[PIISpan]:
         raw = self.model.predict_entities(

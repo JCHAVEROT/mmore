@@ -114,6 +114,7 @@ venv.bak/
 # Milvus DB
 db/
 *.db
+*.db.lock
 
 # Project files
 tmp/
@@ -131,3 +132,4 @@ examples/outputs
 outputs/
 
 paper/
+chitchat/

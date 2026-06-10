@@ -107,7 +107,7 @@ def test_detection_config_round_trips_via_load_config():
         "engine": "llm",
         "entity_types": ["PERSON", "EMAIL", "MRN"],
         "confidence_threshold": 0.8,
-        "llm": {"llm_name": "gpt2", "max_new_tokens": 512},
+        "llm": {"llm_name": "Qwen/Qwen2.5-3B-Instruct", "max_new_tokens": 512},
     }
 
     cfg = load_config(raw, DetectionConfig)
@@ -117,7 +117,7 @@ def test_detection_config_round_trips_via_load_config():
     assert cfg.entity_types == ["PERSON", "EMAIL", "MRN"]
     assert cfg.confidence_threshold == 0.8
     assert isinstance(cfg.llm, LLMConfig)
-    assert cfg.llm.llm_name == "gpt2"
+    assert cfg.llm.llm_name == "Qwen/Qwen2.5-3B-Instruct"
     assert cfg.llm.max_new_tokens == 512
 
 
@@ -251,8 +251,8 @@ def test_detect_pii_openai_filter_is_registered():
 def test_openai_filter_engine_returns_spans_on_synthetic_note():
     fake = _fake_openai_pipeline(
         [
-            {"start": 0, "end": 10, "entity_group": "PERSON", "score": 0.95},
-            {"start": 11, "end": 31, "entity_group": "EMAIL", "score": 0.88},
+            {"start": 0, "end": 10, "entity": "B-private_person", "score": 0.95},
+            {"start": 11, "end": 31, "entity": "B-private_email", "score": 0.88},
         ]
     )
     with patch(
@@ -263,15 +263,15 @@ def test_openai_filter_engine_returns_spans_on_synthetic_note():
         spans = engine.detect("John Smith john@hospital.org called.")
 
     assert len(spans) == 2
-    assert spans[0].label == "PERSON"
-    assert spans[1].label == "EMAIL"
+    assert spans[0].label == "B-private_person"
+    assert spans[1].label == "B-private_email"
 
 
 def test_openai_filter_engine_filters_below_threshold():
     fake = _fake_openai_pipeline(
         [
-            {"start": 0, "end": 10, "entity_group": "PERSON", "score": 0.95},
-            {"start": 11, "end": 25, "entity_group": "EMAIL", "score": 0.30},
+            {"start": 0, "end": 10, "entity": "B-private_person", "score": 0.95},
+            {"start": 11, "end": 25, "entity": "B-private_email", "score": 0.30},
         ]
     )
     with patch(
@@ -282,7 +282,7 @@ def test_openai_filter_engine_filters_below_threshold():
         spans = engine.detect("synthetic")
 
     assert len(spans) == 1
-    assert spans[0].label == "PERSON"
+    assert spans[0].label == "B-private_person"
 
 
 def test_openai_filter_engine_shares_pipeline_cache_across_instances():
@@ -305,9 +305,9 @@ def test_openai_filter_engine_from_config_applies_threshold():
 
     fake = _fake_openai_pipeline(
         [
-            {"start": 0, "end": 10, "entity_group": "PERSON", "score": 0.95},
-            {"start": 11, "end": 20, "entity_group": "PERSON", "score": 0.50},
-            {"start": 21, "end": 30, "entity_group": "EMAIL", "score": 0.95},
+            {"start": 0, "end": 10, "entity": "B-private_person", "score": 0.95},
+            {"start": 11, "end": 20, "entity": "B-private_person", "score": 0.50},
+            {"start": 21, "end": 30, "entity": "B-private_email", "score": 0.95},
         ]
     )
     with patch(
@@ -316,7 +316,9 @@ def test_openai_filter_engine_from_config_applies_threshold():
     ):
         spans = engine.detect("synthetic")
 
-    assert {(s.label, s.score) for s in spans} == {("PERSON", 0.95), ("EMAIL", 0.95)}
+    assert len(spans) == 2
+    assert {s.label for s in spans} == {"B-private_person", "B-private_email"}
+    assert all(s.score >= 0.6 for s in spans)
 
 
 def test_detect_pii_presidio_is_registered():
@@ -436,7 +438,7 @@ def test_llm_engine_returns_spans_on_synthetic_note():
             _fake_dspy_span("john@hospital.org", "EMAIL", 0.88),
         ]
     )
-    cfg = LLMConfig(llm_name="gpt2", max_new_tokens=128)
+    cfg = LLMConfig(llm_name="Qwen/Qwen2.5-3B-Instruct", max_new_tokens=128)
     with _patch_dspy_engine(predictor):
         engine = LLMDetectionEngine(cfg, confidence_threshold=0.5)
         spans = engine.detect(note)
@@ -458,7 +460,7 @@ def test_llm_engine_filters_below_threshold():
             _fake_dspy_span("hidden", "EMAIL", 0.30),
         ]
     )
-    cfg = LLMConfig(llm_name="gpt2")
+    cfg = LLMConfig(llm_name="Qwen/Qwen2.5-3B-Instruct")
     with _patch_dspy_engine(predictor):
         engine = LLMDetectionEngine(cfg, confidence_threshold=0.7)
         spans = engine.detect(note)
@@ -475,7 +477,7 @@ def test_llm_engine_clamps_out_of_range_scores_to_unit_interval():
             _fake_dspy_span("Mary", "PERSON", -0.3),  # below 0
         ]
     )
-    cfg = LLMConfig(llm_name="gpt2")
+    cfg = LLMConfig(llm_name="Qwen/Qwen2.5-3B-Instruct")
     with _patch_dspy_engine(predictor):
         engine = LLMDetectionEngine(cfg, confidence_threshold=0.0)
         spans = engine.detect(note)
@@ -493,7 +495,7 @@ def test_llm_engine_skips_fragments_not_in_source_text():
             _fake_dspy_span("Jane Doe", "PERSON", 0.95),  # not in note
         ]
     )
-    cfg = LLMConfig(llm_name="gpt2")
+    cfg = LLMConfig(llm_name="Qwen/Qwen2.5-3B-Instruct")
     with _patch_dspy_engine(predictor):
         engine = LLMDetectionEngine(cfg, confidence_threshold=0.5)
         spans = engine.detect(note)
@@ -505,7 +507,7 @@ def test_llm_engine_skips_fragments_not_in_source_text():
 
 def test_llm_engine_passes_text_and_entity_types_to_predictor():
     predictor = _fake_dspy_predictor([])
-    cfg = LLMConfig(llm_name="gpt2")
+    cfg = LLMConfig(llm_name="Qwen/Qwen2.5-3B-Instruct")
     with _patch_dspy_engine(predictor):
         engine = LLMDetectionEngine(
             cfg, sensitive_entities=["PERSON", "MRN"], confidence_threshold=0.5
@@ -520,7 +522,7 @@ def test_llm_engine_passes_text_and_entity_types_to_predictor():
 def test_llm_engine_returns_empty_on_predictor_failure():
     predictor = MagicMock()
     predictor.side_effect = ValueError("malformed structured output")
-    cfg = LLMConfig(llm_name="gpt2")
+    cfg = LLMConfig(llm_name="Qwen/Qwen2.5-3B-Instruct")
     with _patch_dspy_engine(predictor):
         engine = LLMDetectionEngine(cfg, confidence_threshold=0.5)
         spans = engine.detect("synthetic")
@@ -535,7 +537,7 @@ def test_llm_engine_skips_malformed_individual_spans():
     bad.score = "not-a-float"
     good = _fake_dspy_span("John", "PERSON", 0.95)
     predictor = _fake_dspy_predictor([bad, good])
-    cfg = LLMConfig(llm_name="gpt2")
+    cfg = LLMConfig(llm_name="Qwen/Qwen2.5-3B-Instruct")
     with _patch_dspy_engine(predictor):
         engine = LLMDetectionEngine(cfg, confidence_threshold=0.5)
         spans = engine.detect("John called.")
@@ -544,12 +546,14 @@ def test_llm_engine_skips_malformed_individual_spans():
     assert spans[0].score == 0.95
 
 
-def test_llm_engine_from_config_requires_llm_block():
+def test_llm_engine_from_config_falls_back_to_default_llm():
+    from mmore.privacy.detection.constants import DEFAULT_LLM_CONFIG
+
     cfg = DetectionConfig(
         engine="llm", entity_types=[], confidence_threshold=0.7, llm=None
     )
-    with pytest.raises(ValueError, match="DetectionConfig.llm"):
-        LLMDetectionEngine.from_config(cfg)
+    engine = LLMDetectionEngine.from_config(cfg)
+    assert engine._llm_config is DEFAULT_LLM_CONFIG
 
 
 def test_llm_engine_hf_provider_routes_to_local_hf_lm():
@@ -588,7 +592,7 @@ def test_llm_engine_from_config_propagates_threshold_and_labels():
         engine="llm",
         entity_types=["PERSON", "MRN"],
         confidence_threshold=0.55,
-        llm=LLMConfig(llm_name="gpt2", max_new_tokens=128),
+        llm=LLMConfig(llm_name="Qwen/Qwen2.5-3B-Instruct", max_new_tokens=128),
     )
     engine = LLMDetectionEngine.from_config(cfg)
     note = "John Smith and Mary Jones met."
