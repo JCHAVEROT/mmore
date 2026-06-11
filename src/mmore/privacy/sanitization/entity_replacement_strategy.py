@@ -6,15 +6,18 @@ the same original text always maps to the same fake within the same
 ``apply`` call.
 """
 
-from typing import Any, Callable, Dict, List, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, List, Tuple
 
 from ..agents.registry import register_tool
 from ..detection.base import PIISpan
 from ..policy import PrivacyPolicy
 from .base import SanitizationStrategy, apply_replacements, select_non_overlapping
 
+if TYPE_CHECKING:
+    from faker import Faker
 
-def _build_label_map(faker: Any) -> Dict[str, Callable[[], str]]:
+
+def _build_label_map(faker: "Faker") -> Dict[str, Callable[[], str]]:
     return {
         "PERSON": faker.name,
         "EMAIL": faker.email,

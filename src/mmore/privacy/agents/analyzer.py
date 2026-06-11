@@ -12,12 +12,13 @@ the per-request PrivacyPolicy the next agents consume.
 import logging
 import re
 from dataclasses import asdict
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import dspy
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from typing_extensions import Self
 
+from ...rag.llm import LLMConfig
 from ...utils import load_config
 from ..config import PrivacyConfig
 from ..detection.constants import (
@@ -157,7 +158,7 @@ class _LLMDetectionParamsSignature(dspy.Signature):
     )
 
 
-_PARAM_SIGNATURES: Dict[str, Any] = {
+_PARAM_SIGNATURES: Dict[str, type[dspy.Signature]] = {
     "presidio": _PresidioParamsSignature,
     "gliner": _GLiNERParamsSignature,
     "openai": _OpenAIFilterParamsSignature,
@@ -170,25 +171,25 @@ _PARAM_SIGNATURES: Dict[str, Any] = {
 # ========================================================================
 
 
-def _build_domain_predictor() -> Any:
+def _build_domain_predictor() -> dspy.Predict:
     return dspy.Predict(
         _DomainClassifySignature.with_instructions(_DOMAIN_CLASSIFY_INSTRUCTION)
     )
 
 
-def _build_detection_engine_selector_predictor() -> Any:
+def _build_detection_engine_selector_predictor() -> dspy.Predict:
     return dspy.Predict(
         _EngineSelectSignature.with_instructions(_ENGINE_SELECT_INSTRUCTION)
     )
 
 
-def _build_label_expansion_predictor() -> Any:
+def _build_label_expansion_predictor() -> dspy.Predict:
     return dspy.Predict(
         _LabelExpandSignature.with_instructions(_LABEL_EXPAND_INSTRUCTION)
     )
 
 
-def _sanitize_label_additions(raw: Any, current: List[str]) -> List[str]:
+def _sanitize_label_additions(raw: object, current: List[str]) -> List[str]:
     """Clean the LLM's proposed labels: uppercase, strip, drop empties and
     labels already in ``current``, cap at the configured maximum."""
     if not isinstance(raw, list):
@@ -209,7 +210,7 @@ def _sanitize_label_additions(raw: Any, current: List[str]) -> List[str]:
     return cleaned
 
 
-def _build_param_predictor(engine: str) -> Any | None:
+def _build_param_predictor(engine: str) -> dspy.Predict | None:
     """Build the DSPy predictor for the engine's param signature, or None."""
     sig = _PARAM_SIGNATURES.get(engine)
     if sig is None:
@@ -222,10 +223,10 @@ def _format_engine_guidance() -> str:
 
 
 def _parse_param_prediction(  # TODO: check once final implemented new parameters to add
-    engine: str, prediction: Any
-) -> Dict[str, Any] | None:
+    engine: str, prediction: dspy.Prediction
+) -> Dict[str, Union[float, bool]] | None:
     """Parse and validate the generated engine parameters."""
-    params: Dict[str, Any] = {}
+    params: Dict[str, Union[float, bool]] = {}
     raw_level = str(getattr(prediction, "threshold_level", "")).strip().lower()
     if raw_level not in THRESHOLD_LEVELS:
         return None
@@ -252,16 +253,16 @@ class ContextPolicyAnalyzerAgent(BaseAgent):
     def __init__(
         self,
         config: PrivacyConfig,
-        llm_config: Optional[Any] = None,
+        llm_config: Optional[LLMConfig] = None,
         checkpointer: Optional[BaseCheckpointSaver] = None,
     ):
-        self._dspy_lm: Optional[Any] = None
+        self._dspy_lm: Optional[dspy.BaseLM] = None
         super().__init__(config, llm_config=llm_config, checkpointer=checkpointer)
 
     @classmethod
     def from_config(
         cls,
-        config: Union[PrivacyConfig, str, Dict[str, Any]],
+        config: Union[PrivacyConfig, str, dict],
         checkpointer: Optional[BaseCheckpointSaver] = None,
     ) -> Self:
         if not isinstance(config, PrivacyConfig):
@@ -269,7 +270,7 @@ class ContextPolicyAnalyzerAgent(BaseAgent):
         llm_config = config.context_analyzer.llm if config.context_analyzer else None
         return cls(config, llm_config, checkpointer=checkpointer)
 
-    def _ensure_dspy_lm(self) -> Any:
+    def _ensure_dspy_lm(self) -> dspy.BaseLM:
         """Lazily build the DSPy LM, raising an error if no LLM is configured."""
         if self._dspy_lm is None:
             if self._llm_config is None:
@@ -354,7 +355,7 @@ class ContextPolicyAnalyzerAgent(BaseAgent):
 
     def _select_params(
         self, engine: str, query: str, chunks: List[str]
-    ) -> Dict[str, Any] | None:
+    ) -> Dict[str, Union[float, bool]] | None:
         """Pick ``engine``'s tunable params via DSPy."""
         if self._llm_config is None:
             return None
@@ -393,7 +394,7 @@ class ContextPolicyAnalyzerAgent(BaseAgent):
         else:
             engine_short = self._select_engine(query, chunks) or profile.default_engine
 
-        defaults = DETECTION_DEFAULT_PARAMS.get(engine_short)
+        defaults = DETECTION_DEFAULT_PARAMS[engine_short]
         if detection_cfg.confidence_threshold is not None:
             detection_params = asdict(defaults)
             detection_params["confidence_threshold"] = (

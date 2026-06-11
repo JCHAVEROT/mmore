@@ -8,12 +8,15 @@ PII spans are converted to ``RecognizerResult`` records and replaced with
 import logging
 import threading
 from enum import Enum
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from ..agents.registry import register_tool
 from ..detection.base import PIISpan
 from ..policy import PrivacyPolicy
 from .base import SanitizationStrategy, select_non_overlapping
+
+if TYPE_CHECKING:
+    from presidio_anonymizer import AnonymizerEngine
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +39,11 @@ class PresidioOperator(str, Enum):
 DEFAULT_OPERATOR = PresidioOperator.REPLACE
 
 
-_anonymizer_cache: Optional[Any] = None
+_anonymizer_cache: Optional["AnonymizerEngine"] = None
 _anonymizer_cache_lock = threading.Lock()
 
 
-def _get_or_load_anonymizer() -> Any:
+def _get_or_load_anonymizer() -> "AnonymizerEngine":
     """Lazily build and cache a Presidio ``AnonymizerEngine``."""
     global _anonymizer_cache
     if _anonymizer_cache is not None:
@@ -60,7 +63,7 @@ def clear_presidio_anonymizer_cache() -> None:
         _anonymizer_cache = None
 
 
-def _normalize_operator(raw: Any) -> str:
+def _normalize_operator(raw: Union[str, PresidioOperator]) -> str:
     """Normalize an operator value (str or ``PresidioOperator``) to its string.
 
     ``PresidioOperator`` is a ``str`` enum, so its constructor accepts both a

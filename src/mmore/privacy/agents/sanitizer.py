@@ -9,12 +9,13 @@ sanitization strategy from the tool registry and applies it to each chunk.
 """
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import dspy
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from typing_extensions import Self
 
+from ...rag.llm import LLMConfig
 from ...utils import load_config
 from ..config import PrivacyConfig
 from ..detection.base import PIISpan
@@ -63,16 +64,16 @@ class SanitizerAgent(BaseAgent):
     def __init__(
         self,
         config: PrivacyConfig,
-        llm_config: Optional[Any] = None,
+        llm_config: Optional[LLMConfig] = None,
         checkpointer: Optional[BaseCheckpointSaver] = None,
     ):
-        self._dspy_lm: Optional[Any] = None
+        self._dspy_lm: Optional[dspy.BaseLM] = None
         super().__init__(config, llm_config=llm_config, checkpointer=checkpointer)
 
     @classmethod
     def from_config(
         cls,
-        config: Union[PrivacyConfig, str, Dict[str, Any]],
+        config: Union[PrivacyConfig, str, dict],
         checkpointer: Optional[BaseCheckpointSaver] = None,
     ) -> Self:
         if not isinstance(config, PrivacyConfig):
@@ -80,7 +81,7 @@ class SanitizerAgent(BaseAgent):
         llm_config = config.sanitization.llm if config.sanitization else None
         return cls(config, llm_config, checkpointer=checkpointer)
 
-    def _ensure_dspy_lm(self) -> Any:
+    def _ensure_dspy_lm(self) -> dspy.BaseLM:
         """Lazily build the DSPy LM when sanitization method requires an LLM."""
         if self._dspy_lm is None:
             if self._llm_config is None:

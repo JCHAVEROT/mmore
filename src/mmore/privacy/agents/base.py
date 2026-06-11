@@ -8,10 +8,8 @@ node so several agents can be combined into one pipeline graph.
 
 from typing import (
     Annotated,
-    Any,
     Callable,
     ClassVar,
-    Dict,
     List,
     Optional,
     TypedDict,
@@ -89,7 +87,7 @@ class BaseAgent:
 
     def __init__(
         self,
-        config: Any,
+        config,
         llm_config: Optional[LLMConfig] = None,
         tools: Optional[List[Callable]] = None,
         checkpointer: Optional[BaseCheckpointSaver] = None,
@@ -115,7 +113,7 @@ class BaseAgent:
     @classmethod
     def from_config(
         cls,
-        config: Any,
+        config,
         checkpointer: Optional[BaseCheckpointSaver] = None,
     ) -> Self:
         if not isinstance(config, AgentConfig):
@@ -161,7 +159,7 @@ class BaseAgent:
         self.release()
 
     @property
-    def node(self) -> Callable[[Any], NodeOutput]:
+    def node(self) -> Callable[..., NodeOutput]:
         """The bound node callable, for composing into a larger graph."""
         return self._node
 
@@ -172,7 +170,7 @@ class BaseAgent:
         graph.add_edge(self.name, END)
         return graph.compile(checkpointer=self.checkpointer)
 
-    def _node(self, state: Any) -> NodeOutput:
+    def _node(self, state) -> NodeOutput:
         messages: List[BaseMessage] = list(state["messages"])
         if self.system_prompt:
             messages = [SystemMessage(content=self.system_prompt), *messages]
@@ -185,7 +183,7 @@ class BaseAgent:
         self,
         query: Union[str, AgentState],
         config: Optional[RunnableConfig] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict:
         """Run the agent graph on the given query.
 
         Args:

@@ -5,7 +5,7 @@ current ``dspy.context`.
 """
 
 import logging
-from typing import Any, List
+from typing import List
 
 import dspy
 
@@ -53,7 +53,7 @@ class _RewriteSignature(dspy.Signature):
 # ========================================================================
 
 
-def _build_rewrite_predictor() -> Any:
+def _build_rewrite_predictor() -> dspy.Predict:
     return dspy.Predict(_RewriteSignature.with_instructions(_REWRITE_INSTRUCTION))
 
 
