@@ -6,10 +6,10 @@ PII spans are converted to ``RecognizerResult`` records and replaced with
 """
 
 import logging
-import threading
 from enum import Enum
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Union
 
+from .._cache import MODEL_REGISTRY
 from ..agents.registry import register_tool
 from ..detection.base import PIISpan
 from ..policy import PrivacyPolicy
@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from presidio_anonymizer import AnonymizerEngine
 
 logger = logging.getLogger(__name__)
+
+_CACHE_PREFIX = "presidio_anonymizer"
 
 
 class PresidioOperator(str, Enum):
@@ -39,28 +41,20 @@ class PresidioOperator(str, Enum):
 DEFAULT_OPERATOR = PresidioOperator.REPLACE
 
 
-_anonymizer_cache: Optional["AnonymizerEngine"] = None
-_anonymizer_cache_lock = threading.Lock()
+def _load_anonymizer() -> "AnonymizerEngine":
+    from presidio_anonymizer import AnonymizerEngine
+
+    return AnonymizerEngine()
 
 
 def _get_or_load_anonymizer() -> "AnonymizerEngine":
     """Lazily build and cache a Presidio ``AnonymizerEngine``."""
-    global _anonymizer_cache
-    if _anonymizer_cache is not None:
-        return _anonymizer_cache
-    with _anonymizer_cache_lock:
-        if _anonymizer_cache is None:
-            from presidio_anonymizer import AnonymizerEngine
-
-            _anonymizer_cache = AnonymizerEngine()
-        return _anonymizer_cache
+    return MODEL_REGISTRY.get_or_load(_CACHE_PREFIX, _load_anonymizer)
 
 
 def clear_presidio_anonymizer_cache() -> None:
     """Drop the cached anonymizer."""
-    global _anonymizer_cache
-    with _anonymizer_cache_lock:
-        _anonymizer_cache = None
+    MODEL_REGISTRY.clear(prefix=_CACHE_PREFIX)
 
 
 def _normalize_operator(raw: Union[str, PresidioOperator]) -> str:

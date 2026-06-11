@@ -8,6 +8,7 @@ the same original text always maps to the same fake within the same
 
 from typing import TYPE_CHECKING, Callable, Dict, List, Tuple
 
+from .._cache import MODEL_REGISTRY
 from ..agents.registry import register_tool
 from ..detection.base import PIISpan
 from ..policy import PrivacyPolicy
@@ -15,6 +16,19 @@ from .base import SanitizationStrategy, apply_replacements, select_non_overlappi
 
 if TYPE_CHECKING:
     from faker import Faker
+
+_CACHE_PREFIX = "faker"
+
+
+def _load_faker() -> "Faker":
+    from faker import Faker
+
+    return Faker()
+
+
+def clear_faker_cache() -> None:
+    """Drop the cached Faker instance."""
+    MODEL_REGISTRY.clear(prefix=_CACHE_PREFIX)
 
 
 def _build_label_map(faker: "Faker") -> Dict[str, Callable[[], str]]:
@@ -45,9 +59,7 @@ class EntityReplacementStrategy(SanitizationStrategy):
         spans_per_chunk: List[List[PIISpan]],
         policy: PrivacyPolicy,
     ) -> List[str]:
-        from faker import Faker
-
-        faker = Faker()
+        faker = MODEL_REGISTRY.get_or_load(_CACHE_PREFIX, _load_faker)
         label_map = _build_label_map(faker)
         consistency = bool(policy.consistency)
         memo: Dict[Tuple[str, str], str] = {}
