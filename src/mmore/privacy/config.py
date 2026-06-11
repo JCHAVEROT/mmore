@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from mmore.privacy.detection.base import DetectionEngineType
+
 from ..rag.llm import LLMConfig
 
 
@@ -14,7 +16,7 @@ class AnalyzerConfig:
 
 @dataclass
 class DetectionConfig:
-    engine: Optional[str] = None
+    engine: Optional[DetectionEngineType] = None
     confidence_threshold: Optional[float] = None
     entity_types: List[str] = field(default_factory=list)
     llm: Optional[LLMConfig] = None

@@ -9,7 +9,7 @@ from .._cache import MODEL_REGISTRY
 from ..agents.registry import register_tool
 from ..config import DetectionConfig
 from ..policy import PrivacyPolicy
-from .base import DetectionEngine, PIISpan
+from .base import DetectionEngine, DetectionEngineType, PIISpan
 from .constants import DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_OPENAI_FILTER_MODEL
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from transformers import TokenClassificationPipeline
 
-_CACHE_PREFIX = "openai_filter"
+_CACHE_PREFIX = DetectionEngineType.OPENAI_FILTER.value
 
 
 def _load_openai_filter_pipeline(model_name: str) -> "TokenClassificationPipeline":

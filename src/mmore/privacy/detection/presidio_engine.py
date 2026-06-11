@@ -15,7 +15,7 @@ from ..agents.registry import register_tool
 from ..config import DetectionConfig
 from ..domains.profile import PRESIDIO_CLINICAL_PATTERNS
 from ..policy import PrivacyPolicy
-from .base import DetectionEngine, PIISpan
+from .base import DetectionEngine, DetectionEngineType, PIISpan
 from .constants import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_LANGUAGE,
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_CACHE_PREFIX = "presidio"
+_CACHE_PREFIX = DetectionEngineType.PRESIDIO.value
 
 
 def _ensure_spacy_model(model_name: str) -> None:
