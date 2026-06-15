@@ -20,8 +20,5 @@ class PrivacyPolicy:
     domain_prompt: str
     detection_params: dict = field(default_factory=dict)
     sanitization_params: dict = field(default_factory=dict)
-    redaction_strictness: str = (
-        "standard"  # TODO: check if still useful later or delete
-    )
     sanitizer_system_prompt: str = ""  # TODO: check if still useful later or delete
     flagged_fields: List[str] = field(default_factory=list)
