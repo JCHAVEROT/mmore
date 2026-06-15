@@ -6,17 +6,7 @@ Each engine implements ``DetectionEngine.detect`` and returns a list of
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum
 from typing import List
-
-
-class DetectionEngineType(str, Enum):
-    """The supported PII detection engines."""
-
-    GLINER = "gliner"
-    LLM = "llm"
-    OPENAI_FILTER = "openai_filter"
-    PRESIDIO = "presidio"
 
 
 @dataclass

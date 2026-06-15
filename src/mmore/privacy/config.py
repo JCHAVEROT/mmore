@@ -1,11 +1,19 @@
 """Top-level configuration for the privacy pipeline."""
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import List, Optional
 
-from mmore.privacy.detection.base import DetectionEngineType
-
 from ..rag.llm import LLMConfig
+
+
+class DetectionEngineType(str, Enum):
+    """The supported PII detection engines."""
+
+    GLINER = "gliner"
+    LLM = "llm"
+    OPENAI_FILTER = "openai_filter"
+    PRESIDIO = "presidio"
 
 
 @dataclass

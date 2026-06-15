@@ -7,9 +7,9 @@ from typing_extensions import Self
 
 from .._cache import MODEL_REGISTRY
 from ..agents.registry import register_tool
-from ..config import DetectionConfig
+from ..config import DetectionConfig, DetectionEngineType
 from ..policy import PrivacyPolicy
-from .base import DetectionEngine, DetectionEngineType, PIISpan
+from .base import DetectionEngine, PIISpan
 from .constants import DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_OPENAI_FILTER_MODEL
 
 logger = logging.getLogger(__name__)

@@ -6,8 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mmore.privacy.agents.registry import tool_registry
-from mmore.privacy.config import DetectionConfig
-from mmore.privacy.detection.base import DetectionEngineType
+from mmore.privacy.config import DetectionConfig, DetectionEngineType
 from mmore.privacy.detection.gliner_engine import (
     GLiNEREngine,
     clear_gliner_cache,
