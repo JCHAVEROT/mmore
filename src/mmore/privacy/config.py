@@ -16,6 +16,15 @@ class DetectionEngineType(str, Enum):
     PRESIDIO = "presidio"
 
 
+class SanitizationStrategyType(str, Enum):
+    """The supported sanitization strategies."""
+
+    TOKEN_MASKING = "token_masking"
+    ENTITY_REPLACEMENT = "entity_replacement"
+    SYNTHETIC_REWRITE = "synthetic_rewrite"
+    PRESIDIO = "presidio"
+
+
 @dataclass
 class AnalyzerConfig:
     llm: LLMConfig
@@ -32,8 +41,7 @@ class DetectionConfig:
 
 @dataclass
 class SanitizationConfig:
-    engine: Optional[str] = None
-    strategy: Optional[str] = None
+    strategy: Optional[SanitizationStrategyType] = None
     consistency: Optional[bool] = None
     llm: Optional[LLMConfig] = None
 
