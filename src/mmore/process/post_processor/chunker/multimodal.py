@@ -38,6 +38,9 @@ class TableHandlingMode(str, Enum):
 class MultimodalChunker(BasePostProcessor):
     text_chunker: BaseChunker
     table_handling: TableHandlingMode
+    # Chunking is CPU-bound and the chunker pickles cheaply (tokenizer only),
+    # so it benefits from the shared pool. See BasePostProcessor.batch_process.
+    parallelizable: bool = True
 
     def __init__(self, text_chunker: BaseChunker, table_handling: str = "single_row"):
         super().__init__("🦛 Chunker")

@@ -1,5 +1,7 @@
 import logging
+import multiprocessing as mp
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
@@ -41,6 +43,7 @@ class PPPipeline:
         *processors: BasePostProcessor,
         previous_results_path: Optional[str] = None,
         output_config: Optional[OutputConfig] = None,
+        num_workers: Optional[int] = None,
     ):
         if output_config is None:
             output_config = OutputConfig(output_path="./results")
@@ -48,9 +51,26 @@ class PPPipeline:
         self.post_processors = processors
         self.previous_results_path = previous_results_path
         self.output_config = output_config
+        self.num_workers = num_workers or (os.cpu_count() or 1)
 
         # Log the pipeline
         self._log_plan()
+
+    @contextmanager
+    def _worker_pool(self):
+        """Yield a shared worker pool when any processor opts into parallelism,
+        otherwise None. The pool is closed when the pipeline run finishes."""
+        if not any(getattr(p, "parallelizable", False) for p in self.post_processors):
+            yield None
+            return
+
+        logger.info(f"Initializing post-process pool with {self.num_workers} workers")
+        pool = mp.Pool(processes=self.num_workers)
+        try:
+            yield pool
+        finally:
+            pool.close()
+            pool.join()
 
     def __add__(self, other):
         return PPPipeline(
@@ -58,6 +78,7 @@ class PPPipeline:
             *other.post_processors,
             previous_results_path=self.previous_results_path,
             output_config=self.output_config,
+            num_workers=self.num_workers,
         )
 
     def _log_plan(self):
@@ -99,18 +120,20 @@ class PPPipeline:
     def _run_full(self, samples: List[MultimodalSample]) -> List[MultimodalSample]:
         """Run all processors on all samples."""
         output_dir = os.path.dirname(self.output_config.output_path) or "."
-        for i, processor in enumerate(self.post_processors):
-            tmp_save_path = None
-            if self.output_config.save_each_step:
-                tmp_save_path = os.path.join(
-                    output_dir,
-                    f"{i + 1}___{processor.name}.jsonl",
+        with self._worker_pool() as pool:
+            for i, processor in enumerate(self.post_processors):
+                tmp_save_path = None
+                if self.output_config.save_each_step:
+                    tmp_save_path = os.path.join(
+                        output_dir,
+                        f"{i + 1}___{processor.name}.jsonl",
+                    )
+                samples = processor.batch_process(
+                    samples,
+                    pool=pool,
+                    tmp_save_path=tmp_save_path,
+                    save_every=self.output_config.save_every,
                 )
-            samples = processor.batch_process(
-                samples,
-                tmp_save_path=tmp_save_path,
-                save_every=self.output_config.save_every,
-            )
 
         processed_at = datetime.now().isoformat()
         for sample in samples:
@@ -173,18 +196,20 @@ class PPPipeline:
 
         # Run through pipeline
         processed = samples_to_process
-        for i, processor in enumerate(self.post_processors):
-            tmp_save_path = None
-            if self.output_config.save_each_step:
-                tmp_save_path = os.path.join(
-                    output_dir,
-                    f"{i + 1}___{processor.name}_incremental.jsonl",
+        with self._worker_pool() as pool:
+            for i, processor in enumerate(self.post_processors):
+                tmp_save_path = None
+                if self.output_config.save_each_step:
+                    tmp_save_path = os.path.join(
+                        output_dir,
+                        f"{i + 1}___{processor.name}_incremental.jsonl",
+                    )
+                processed = processor.batch_process(
+                    processed,
+                    pool=pool,
+                    tmp_save_path=tmp_save_path,
+                    save_every=self.output_config.save_every,
                 )
-            processed = processor.batch_process(
-                processed,
-                tmp_save_path=tmp_save_path,
-                save_every=self.output_config.save_every,
-            )
 
         # Add processed_at to newly processed samples
         processed_at = datetime.now().isoformat()

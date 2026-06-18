@@ -1,5 +1,8 @@
 import io
 import logging
+import math
+import os
+import queue
 import re
 from dataclasses import dataclass, field
 from multiprocessing import Manager, Process, set_start_method
@@ -34,6 +37,7 @@ class PDFMetadata(DocumentMetadata):
 
 class PDFProcessor(Processor):
     artifact_dict = None
+    _cache_warmed = False
 
     def __init__(self, config=None):
         super().__init__(config=config or ProcessorConfig())
@@ -42,6 +46,74 @@ class PDFProcessor(Processor):
     @classmethod
     def accepts(cls, file: FileDescriptor) -> bool:
         return file.file_extension.lower() == ".pdf"
+
+    @staticmethod
+    def _pdftext_workers() -> int:
+        """Number of CPU workers marker uses for PDF text extraction.
+
+        Marker's auto-detection underutilizes high-core nodes, so we set it
+        explicitly. Defaults to half the cores to leave headroom for the outer
+        per-file pool; override with PDFTEXT_WORKERS.
+        """
+        return int(
+            os.environ.get("PDFTEXT_WORKERS", max(1, (os.cpu_count() or 2) // 2))
+        )
+
+    @staticmethod
+    def _prewarm_model_cache() -> None:
+        """Populate the on-disk model cache once in the parent process.
+
+        Without this, every spawned GPU worker calls create_model_dict() on a
+        cold cache simultaneously and they race to download the same files
+        (surya then errors with "destination already exists" and retries).
+        Loading on CPU only touches the disk cache without occupying GPU memory.
+        """
+        if PDFProcessor._cache_warmed:
+            return
+        create_model_dict(device="cpu")
+        PDFProcessor._cache_warmed = True
+
+    @staticmethod
+    def _gather_parallel_results(
+        processes, output_queue, error_queue, join_timeout=120
+    ):
+        """Collect exactly one payload per worker, then shut the workers down.
+
+        marker spawns its own internal worker pool, so a child process may not
+        exit promptly after returning its result. Spin-waiting on is_alive()
+        therefore hangs forever; instead we collect all expected payloads, then
+        join with a timeout and terminate any straggler.
+        """
+        payloads = []
+        for _ in processes:
+            while True:
+                if not error_queue.empty():
+                    raise RuntimeError(f"Child process failed: {error_queue.get()}")
+                try:
+                    payloads.append(output_queue.get(timeout=1.0))
+                    break
+                except queue.Empty:
+                    if (
+                        not any(p.is_alive() for p in processes)
+                        and output_queue.empty()
+                    ):
+                        if not error_queue.empty():
+                            raise RuntimeError(
+                                f"Child process failed: {error_queue.get()}"
+                            )
+                        raise RuntimeError(
+                            "A PDF worker exited without returning a result"
+                        )
+
+        for p in processes:
+            p.join(timeout=join_timeout)
+            if p.is_alive():
+                logging.warning(
+                    "PDF worker still alive after returning its result; terminating."
+                )
+                p.terminate()
+                p.join(timeout=10)
+        return payloads
 
     @staticmethod
     def load_models(disable_image_extraction: bool = False):
@@ -54,6 +126,7 @@ class PDFProcessor(Processor):
             "use_llm": False,
             "disable_multiprocessing": False,
             "paginate_output": True,
+            "pdftext_workers": PDFProcessor._pdftext_workers(),
         }
         config_parser = ConfigParser(marker_config)
         converter = PdfConverter(
@@ -77,8 +150,14 @@ class PDFProcessor(Processor):
             else:
                 num_gpus = torch.cuda.device_count()
 
-            # 1 GPU available or length of files_paths is less than 10 we just do single-GPU
-            if num_gpus == 1 or len(files_paths) < 10:
+            # Single GPU (or CPU): parallelize across files with the shared pool.
+            if num_gpus <= 1:
+                # Multiple files: let the shared worker pool process them in
+                # parallel. The converter stays None on the parent so the
+                # processor pickles cheaply; each worker lazily builds its own.
+                if self._pool is not None and len(files_paths) > 1:
+                    return self._pool.map(self.process, files_paths)
+
                 if self.converter is None:
                     self.converter = PDFProcessor.load_models(
                         disable_image_extraction=not self.config.custom_config.get(
@@ -96,12 +175,27 @@ class PDFProcessor(Processor):
 
                 return results
             else:  # Multiple GPUs available
+                # A single large PDF can't be split file-wise, so split it
+                # page-wise across GPUs instead of leaving all but one idle.
+                if len(files_paths) == 1:
+                    page_threshold = int(
+                        self.config.custom_config.get("multi_gpu_page_threshold", 50)
+                    )
+                    if self._pdf_page_count(files_paths[0]) > page_threshold:
+                        return [
+                            self._process_single_file_multi_gpu(
+                                files_paths[0], num_gpus, self.config.custom_config
+                            )
+                        ]
+
                 batches = self._split_files(files_paths, num_gpus)
 
                 try:
                     set_start_method("spawn", force=True)
                 except RuntimeError:
                     pass
+
+                self._prewarm_model_cache()
 
                 manager = Manager()
                 output_queue = manager.Queue()
@@ -126,20 +220,10 @@ class PDFProcessor(Processor):
                     p.start()
 
                 results = []
-
-                while any(p.is_alive() for p in processes):
-                    if not error_queue.empty():
-                        error = error_queue.get()
-                        raise RuntimeError(f"Child process failed: {error}")
-                    while not output_queue.empty():
-                        results.extend(output_queue.get())
-
-                while not output_queue.empty():
-                    results.extend(output_queue.get())
-
-                if not error_queue.empty():
-                    error = error_queue.get()
-                    raise RuntimeError(f"Child process failed: {error}")
+                for batch_results in self._gather_parallel_results(
+                    processes, output_queue, error_queue
+                ):
+                    results.extend(batch_results)
 
                 return results
 
@@ -316,7 +400,9 @@ class PDFProcessor(Processor):
                 "languages": None,
                 "use_llm": False,
                 "disable_multiprocessing": False,
+                "paginate_output": True,
                 "device": f"cuda:{gpu_id}",
+                "pdftext_workers": PDFProcessor._pdftext_workers(),
             }
 
             config_parser = ConfigParser(marker_config)
@@ -343,3 +429,163 @@ class PDFProcessor(Processor):
             torch.cuda.empty_cache()
             if hasattr(self, "converter"):
                 del self.converter
+
+    # Functions for parallelizing a single large PDF across GPUs
+    @staticmethod
+    def _pdf_page_count(file_path: str) -> int:
+        doc = pymupdf.Document(file_path)
+        try:
+            return doc.page_count
+        finally:
+            doc.close()
+
+    def _process_single_file_multi_gpu(
+        self, file_path: str, num_gpus: int, config_custom: Dict[str, Any]
+    ) -> MultimodalSample:
+        """Process a single large PDF by splitting its pages into contiguous
+        ranges, one per GPU, then merging the results in page order."""
+        total_pages = self._pdf_page_count(file_path)
+        pages_per_gpu = math.ceil(total_pages / num_gpus)
+
+        ranges: List[Tuple[int, int]] = []
+        for i in range(num_gpus):
+            start = i * pages_per_gpu
+            end = min(start + pages_per_gpu, total_pages)
+            if start < end:
+                ranges.append((start, end))
+
+        try:
+            set_start_method("spawn", force=True)
+        except RuntimeError:
+            pass
+
+        self._prewarm_model_cache()
+
+        manager = Manager()
+        output_queue = manager.Queue()
+        error_queue = manager.Queue()
+        processes = []
+
+        for batch_num, (start, end) in enumerate(ranges):
+            gpu_id = batch_num % num_gpus
+            p = Process(
+                target=self._process_page_range,
+                args=(
+                    file_path,
+                    start,
+                    end,
+                    gpu_id,
+                    config_custom,
+                    output_queue,
+                    error_queue,
+                    batch_num,
+                ),
+            )
+            processes.append(p)
+            p.start()
+
+        results: Dict[int, Tuple[int, str, List[Image.Image]]] = {}
+        for batch_num, payload in self._gather_parallel_results(
+            processes, output_queue, error_queue
+        ):
+            results[batch_num] = payload
+
+        ordered = [results[i] for i in range(len(ranges)) if i in results]
+        return self._merge_page_range_results(ordered, file_path)
+
+    @staticmethod
+    def _process_page_range(
+        file_path: str,
+        start_page: int,
+        end_page: int,
+        gpu_id: int,
+        config_custom: Dict[str, Any],
+        output_queue,
+        error_queue,
+        batch_num: int = 0,
+    ) -> None:
+        """Process pages [start_page, end_page) of a PDF on a specific GPU.
+
+        Returns the raw (paginated) marker text plus images via the queue; the
+        parent merges and assigns absolute page numbers. Parsing is deferred to
+        the parent so paragraph offsets are computed against the merged text.
+        """
+        try:
+            torch.cuda.set_device(gpu_id)
+
+            if PDFProcessor.artifact_dict is None:
+                PDFProcessor.artifact_dict = create_model_dict()
+
+            marker_config = {
+                "disable_image_extraction": not config_custom.get(
+                    "extract_images", True
+                ),
+                "languages": None,
+                "use_llm": False,
+                "disable_multiprocessing": False,
+                "paginate_output": True,
+                "device": f"cuda:{gpu_id}",
+                "page_range": list(range(start_page, end_page)),
+                "pdftext_workers": PDFProcessor._pdftext_workers(),
+            }
+
+            config_parser = ConfigParser(marker_config)
+            converter = PdfConverter(
+                artifact_dict=PDFProcessor.artifact_dict,
+                config=config_parser.generate_config_dict(),
+            )
+
+            rendered = converter(file_path)
+            text, _, images = text_from_rendered(rendered)
+            text = re.sub(str(IMG_REGEX), "<attachment>", cast(str, text))
+
+            output_queue.put((batch_num, (start_page, text, list(images.values()))))
+
+        except Exception as e:
+            error_queue.put(
+                f"GPU {gpu_id} page range {start_page}-{end_page}: {str(e)}"
+            )
+            raise e
+        finally:
+            torch.cuda.empty_cache()
+
+    def _merge_page_range_results(
+        self,
+        ordered: List[Tuple[int, str, List[Image.Image]]],
+        file_path: str,
+    ) -> MultimodalSample:
+        """Merge page-range results into one sample, in page order.
+
+        Concatenates the cleaned page texts and rebuilds ``paragraph_starts``
+        with cumulative character offsets and absolute page numbers. Marker's
+        per-range page ids (whether range-relative or absolute) are remapped to
+        contiguous absolute pages anchored at each range's start page.
+        """
+        all_clean: List[str] = []
+        all_images: List[Image.Image] = []
+        merged_starts: List[Tuple[int, int, int]] = []
+        char_offset = 0
+
+        for start_page, raw_text, images in ordered:
+            starts, clean = self._parse_pagination(raw_text)
+            all_images.extend(images)
+
+            page_remap: Dict[int, int] = {}
+            next_page = start_page
+            for offset, page_id, para_idx in starts:
+                if page_id == -1:  # per-range terminal marker, re-added globally
+                    continue
+                if page_id not in page_remap:
+                    page_remap[page_id] = next_page
+                    next_page += 1
+                merged_starts.append(
+                    (char_offset + offset, page_remap[page_id], para_idx)
+                )
+
+            char_offset += len(clean)
+            all_clean.append(clean)
+
+        merged_starts.append((char_offset, -1, -1))
+
+        metadata = PDFMetadata(file_path=file_path, paragraph_starts=merged_starts)
+        return self.create_sample(["".join(all_clean)], all_images, metadata)
